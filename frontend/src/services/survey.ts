@@ -6,6 +6,16 @@ interface SurveyListResponse {
   totalCount: number
 }
 
+interface SurveyResponse {
+  survey_id: string
+  respondent_id?: string
+  anonymous_id?: string
+  answers: Array<{
+    question_id: string
+    value: string | string[] | number
+  }>
+}
+
 const surveyService = {
   /**
    * Get all surveys for a user
@@ -23,6 +33,21 @@ const surveyService = {
   async getSurvey(surveyId: string): Promise<Survey> {
     const response = await apiClient.get<Survey>(`/surveys/${surveyId}`)
     return response.data
+  },
+
+  /**
+   * Get a public survey by ID for taking
+   */
+  async getPublicSurvey(surveyId: string): Promise<Survey> {
+    const response = await apiClient.get<Survey>(`/surveys/${surveyId}/public`)
+    return response.data
+  },
+
+  /**
+   * Submit a response to a survey
+   */
+  async submitSurveyResponse(surveyId: string, responseData: SurveyResponse): Promise<void> {
+    await apiClient.post(`/surveys/${surveyId}/responses`, responseData)
   },
 
   /**

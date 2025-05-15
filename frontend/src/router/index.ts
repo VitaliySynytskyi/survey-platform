@@ -8,6 +8,7 @@ import RegisterPage from '@/views/RegisterPage.vue'
 import ProfilePage from '@/views/ProfilePage.vue'
 import MySurveysPage from '@/views/MySurveysPage.vue'
 import SurveyEditorPage from '@/views/SurveyEditorPage.vue'
+import SurveyTakePage from '@/views/SurveyTakePage.vue'
 import NotFoundPage from '@/views/NotFoundPage.vue'
 
 const routes: Array<RouteRecordRaw> = [
@@ -52,6 +53,12 @@ const routes: Array<RouteRecordRaw> = [
     name: 'EditSurvey',
     component: SurveyEditorPage,
     meta: { title: 'Edit Survey', requiresAuth: true }
+  },
+  {
+    path: '/surveys/:id/take',
+    name: 'TakeSurvey',
+    component: SurveyTakePage,
+    meta: { title: 'Take Survey' }
   },
   {
     path: '/:catchAll(.*)',
