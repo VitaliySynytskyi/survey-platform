@@ -1,0 +1,110 @@
+package main
+
+import (
+	"context"
+	"fmt"
+	"log"
+	"net/http"
+	"os"
+	"os/signal"
+	"syscall"
+	"time"
+
+	"github.com/VitaliySynytskyi/microservices-survey-app/backend/services/survey_service/internal/api"
+	"github.com/VitaliySynytskyi/microservices-survey-app/backend/services/survey_service/internal/api/handlers"
+	"github.com/VitaliySynytskyi/microservices-survey-app/backend/services/survey_service/internal/config"
+	"github.com/VitaliySynytskyi/microservices-survey-app/backend/services/survey_service/internal/store/mongodb"
+	"go.mongodb.org/mongo-driver/mongo"
+	"go.mongodb.org/mongo-driver/mongo/options"
+)
+
+func main() {
+	// Завантаження конфігурації
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
+
+	// Підключення до MongoDB
+	mongoClient, err := connectToMongoDB(cfg.MongoDB.URI)
+	if err != nil {
+		log.Fatalf("Failed to connect to MongoDB: %v", err)
+	}
+	defer disconnectFromMongoDB(mongoClient)
+
+	// Ініціалізація сховища даних
+	db := mongoClient.Database(cfg.MongoDB.Database)
+	repository := mongodb.NewSurveyRepository(db)
+
+	// Ініціалізація обробників API
+	surveyHandler := handlers.NewSurveyHandler(repository)
+
+	// Ініціалізація маршрутизатора
+	router := api.NewRouter(cfg, surveyHandler)
+
+	// Налаштування HTTP-сервера
+	server := &http.Server{
+		Addr:         fmt.Sprintf(":%d", cfg.Server.Port),
+		Handler:      router,
+		ReadTimeout:  15 * time.Second,
+		WriteTimeout: 15 * time.Second,
+		IdleTimeout:  60 * time.Second,
+	}
+
+	// Запуск сервера в окремій горутині
+	go func() {
+		log.Printf("Starting server on port %d", cfg.Server.Port)
+		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Failed to start server: %v", err)
+		}
+	}()
+
+	// Налаштування граціозного завершення роботи
+	quit := make(chan os.Signal, 1)
+	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
+	<-quit
+	log.Println("Shutting down server...")
+
+	// Встановлення таймауту для завершення
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	// Спроба граціозного завершення роботи сервера
+	if err := server.Shutdown(ctx); err != nil {
+		log.Fatalf("Server forced to shutdown: %v", err)
+	}
+
+	log.Println("Server exited properly")
+}
+
+// connectToMongoDB підключення до MongoDB
+func connectToMongoDB(uri string) (*mongo.Client, error) {
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	clientOptions := options.Client().ApplyURI(uri)
+	client, err := mongo.Connect(ctx, clientOptions)
+	if err != nil {
+		return nil, err
+	}
+
+	// Перевірка підключення
+	err = client.Ping(ctx, nil)
+	if err != nil {
+		return nil, err
+	}
+
+	log.Println("Connected to MongoDB")
+	return client, nil
+}
+
+// disconnectFromMongoDB відключення від MongoDB
+func disconnectFromMongoDB(client *mongo.Client) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	if err := client.Disconnect(ctx); err != nil {
+		log.Printf("Error disconnecting from MongoDB: %v", err)
+	}
+	log.Println("Disconnected from MongoDB")
+}
