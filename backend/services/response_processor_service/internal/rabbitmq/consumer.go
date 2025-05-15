@@ -7,6 +7,7 @@ import (
 	"log"
 
 	"github.com/streadway/amqp"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 
 	"github.com/VitaliySynytskyi/survey-platform/backend/services/response_processor_service/internal/config"
 	"github.com/VitaliySynytskyi/survey-platform/backend/services/response_processor_service/internal/db"
@@ -192,6 +193,54 @@ func (c *Consumer) processMessages(ctx context.Context) {
 	}
 }
 
+// validateMessage validates the RabbitMQ message structure
+func validateMessage(message *model.RabbitMQMessage) error {
+	// Validate SurveyID (must be a valid ObjectID)
+	if message.SurveyID == "" {
+		return fmt.Errorf("survey_id is required")
+	}
+
+	// Check if SurveyID is a valid ObjectID
+	_, err := primitive.ObjectIDFromHex(message.SurveyID)
+	if err != nil {
+		return fmt.Errorf("invalid survey_id format: %w", err)
+	}
+
+	// Validate that we have either a respondent ID or an anonymous ID
+	if message.RespondentID == "" && message.AnonymousID == "" {
+		return fmt.Errorf("either respondent_id or anonymous_id must be provided")
+	}
+
+	// Validate answers
+	if len(message.Answers) == 0 {
+		return fmt.Errorf("at least one answer must be provided")
+	}
+
+	// Validate each answer has a questionID and value
+	for i, answer := range message.Answers {
+		if answer.QuestionID == "" {
+			return fmt.Errorf("answer at index %d is missing question_id", i)
+		}
+
+		// Check if QuestionID is a valid ObjectID
+		_, err := primitive.ObjectIDFromHex(answer.QuestionID)
+		if err != nil {
+			return fmt.Errorf("invalid question_id format for answer at index %d: %w", i, err)
+		}
+
+		if answer.Value == nil {
+			return fmt.Errorf("answer at index %d is missing value", i)
+		}
+	}
+
+	// Validate submitted_at timestamp
+	if message.SubmittedAt == "" {
+		return fmt.Errorf("submitted_at timestamp is required")
+	}
+
+	return nil
+}
+
 // handleDelivery processes a single delivery
 func (c *Consumer) handleDelivery(ctx context.Context, delivery amqp.Delivery) {
 	// Parse message
@@ -199,7 +248,16 @@ func (c *Consumer) handleDelivery(ctx context.Context, delivery amqp.Delivery) {
 	err := json.Unmarshal(delivery.Body, &message)
 	if err != nil {
 		log.Printf("Failed to parse message: %v", err)
-		// Reject and don't requeue
+		// Reject and don't requeue - this is a malformed message
+		delivery.Reject(false)
+		return
+	}
+
+	// Validate message
+	err = validateMessage(&message)
+	if err != nil {
+		log.Printf("Message validation failed: %v", err)
+		// Reject and don't requeue - send to DLQ
 		delivery.Reject(false)
 		return
 	}

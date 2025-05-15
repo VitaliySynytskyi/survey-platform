@@ -1,0 +1,554 @@
+openapi: 3.0.3
+info:
+  title: Survey Service API
+  description: API for survey creation and management
+  version: 1.0.0
+  
+servers:
+  - url: http://localhost:8082
+    description: Development server
+  - url: http://api.survey-platform.com/surveys
+    description: Production server
+    
+components:
+  securitySchemes:
+    bearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+      
+  schemas:
+    Error:
+      type: object
+      properties:
+        code:
+          type: integer
+          format: int32
+        message:
+          type: string
+      required:
+        - code
+        - message
+          
+    SurveyMetadata:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+          description: Unique survey identifier
+        title:
+          type: string
+          description: Survey title
+        description:
+          type: string
+          description: Survey description
+        creator_id:
+          type: string
+          format: uuid
+          description: ID of the user who created the survey
+        status:
+          type: string
+          enum: [draft, active, closed, archived]
+          description: Current status of the survey
+        public_access:
+          type: boolean
+          description: Whether the survey can be taken without authentication
+        start_date:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the survey becomes available
+        end_date:
+          type: string
+          format: date-time
+          nullable: true
+          description: When the survey closes
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - title
+        - creator_id
+        
+    QuestionOption:
+      type: object
+      properties:
+        id:
+          type: string
+        text:
+          type: string
+        value:
+          type: string
+      required:
+        - text
+        
+    ValidationRule:
+      type: object
+      properties:
+        type:
+          type: string
+          enum: [required, min_length, max_length, regex, range]
+        params:
+          type: object
+          description: Parameters for the validation rule
+        error_message:
+          type: string
+          
+    LogicJump:
+      type: object
+      properties:
+        condition:
+          type: object
+          properties:
+            question_id:
+              type: string
+            operator:
+              type: string
+              enum: [equals, not_equals, contains, not_contains, greater_than, less_than]
+            value:
+              type: object
+        destination_question_id:
+          type: string
+          
+    Question:
+      type: object
+      properties:
+        id:
+          type: string
+        question_text:
+          type: string
+        question_type:
+          type: string
+          enum: [text, textarea, single_choice, multiple_choice, rating, date, number, file_upload]
+        required:
+          type: boolean
+        options:
+          type: array
+          items:
+            $ref: '#/components/schemas/QuestionOption'
+        validation_rules:
+          type: array
+          items:
+            $ref: '#/components/schemas/ValidationRule'
+        logic_jumps:
+          type: array
+          items:
+            $ref: '#/components/schemas/LogicJump'
+      required:
+        - question_text
+        - question_type
+        
+    SurveyTemplate:
+      type: object
+      properties:
+        id:
+          type: string
+        survey_id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        description:
+          type: string
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Question'
+        settings:
+          type: object
+          properties:
+            show_progress_bar:
+              type: boolean
+            randomize_questions:
+              type: boolean
+            one_question_per_page:
+              type: boolean
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+      required:
+        - title
+        - survey_id
+        - questions
+        
+    SurveyMetadataCreate:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        status:
+          type: string
+          enum: [draft, active, closed]
+        public_access:
+          type: boolean
+        start_date:
+          type: string
+          format: date-time
+        end_date:
+          type: string
+          format: date-time
+      required:
+        - title
+        
+    SurveyTemplateCreate:
+      type: object
+      properties:
+        title:
+          type: string
+        description:
+          type: string
+        questions:
+          type: array
+          items:
+            $ref: '#/components/schemas/Question'
+        settings:
+          type: object
+          properties:
+            show_progress_bar:
+              type: boolean
+            randomize_questions:
+              type: boolean
+            one_question_per_page:
+              type: boolean
+      required:
+        - title
+        - questions
+        
+security:
+  - bearerAuth: []
+  
+paths:
+  /surveys:
+    get:
+      summary: List surveys
+      description: Returns a list of surveys the current user has access to
+      operationId: listSurveys
+      parameters:
+        - name: page
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            default: 1
+        - name: limit
+          in: query
+          schema:
+            type: integer
+            minimum: 1
+            maximum: 100
+            default: 20
+        - name: status
+          in: query
+          schema:
+            type: string
+            enum: [draft, active, closed, archived]
+        - name: sort
+          in: query
+          schema:
+            type: string
+            enum: [created_at_asc, created_at_desc, title_asc, title_desc]
+      responses:
+        '200':
+          description: A list of surveys
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: array
+                    items:
+                      $ref: '#/components/schemas/SurveyMetadata'
+                  pagination:
+                    type: object
+                    properties:
+                      total:
+                        type: integer
+                      page:
+                        type: integer
+                      limit:
+                        type: integer
+                      pages:
+                        type: integer
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+              
+    post:
+      summary: Create a new survey
+      description: Creates a new survey with metadata and template
+      operationId: createSurvey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                metadata:
+                  $ref: '#/components/schemas/SurveyMetadataCreate'
+                template:
+                  $ref: '#/components/schemas/SurveyTemplateCreate'
+              required:
+                - metadata
+                - template
+      responses:
+        '201':
+          description: Survey created successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  metadata:
+                    $ref: '#/components/schemas/SurveyMetadata'
+                  template:
+                    $ref: '#/components/schemas/SurveyTemplate'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+  /surveys/{surveyId}:
+    parameters:
+      - name: surveyId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          
+    get:
+      summary: Get survey details
+      description: Returns survey metadata and template
+      operationId: getSurvey
+      responses:
+        '200':
+          description: Survey details
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  metadata:
+                    $ref: '#/components/schemas/SurveyMetadata'
+                  template:
+                    $ref: '#/components/schemas/SurveyTemplate'
+        '404':
+          description: Survey not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+    put:
+      summary: Update survey
+      description: Updates survey metadata and template
+      operationId: updateSurvey
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                metadata:
+                  $ref: '#/components/schemas/SurveyMetadataCreate'
+                template:
+                  $ref: '#/components/schemas/SurveyTemplateCreate'
+      responses:
+        '200':
+          description: Survey updated successfully
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  metadata:
+                    $ref: '#/components/schemas/SurveyMetadata'
+                  template:
+                    $ref: '#/components/schemas/SurveyTemplate'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Survey not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+    delete:
+      summary: Delete survey
+      description: Deletes a survey (soft delete)
+      operationId: deleteSurvey
+      responses:
+        '204':
+          description: Survey deleted successfully
+        '404':
+          description: Survey not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+  /surveys/{surveyId}/status:
+    parameters:
+      - name: surveyId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          
+    patch:
+      summary: Update survey status
+      description: Updates only the status of a survey
+      operationId: updateSurveyStatus
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                status:
+                  type: string
+                  enum: [draft, active, closed, archived]
+              required:
+                - status
+      responses:
+        '200':
+          description: Survey status updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SurveyMetadata'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Survey not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+  /surveys/{surveyId}/template:
+    parameters:
+      - name: surveyId
+        in: path
+        required: true
+        schema:
+          type: string
+          format: uuid
+          
+    get:
+      summary: Get survey template
+      description: Returns only the survey template without metadata
+      operationId: getSurveyTemplate
+      responses:
+        '200':
+          description: Survey template
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SurveyTemplate'
+        '404':
+          description: Survey template not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+                
+    put:
+      summary: Update survey template
+      description: Updates only the survey template
+      operationId: updateSurveyTemplate
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/SurveyTemplateCreate'
+      responses:
+        '200':
+          description: Survey template updated successfully
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/SurveyTemplate'
+        '400':
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '404':
+          description: Survey template not found
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error'
+        '401':
+          description: Unauthorized
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/Error' 

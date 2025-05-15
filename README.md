@@ -10,20 +10,37 @@ This project is a microservice-based platform for conducting sociological survey
   - PostgreSQL (relational data: user profiles, roles, survey metadata)
   - MongoDB (non-relational data: survey structures, responses)
 - **Message Broker**: RabbitMQ (for asynchronous communication)
+- **Service Discovery**: Consul (planned)
+
+## Microservices Architecture
+
+The platform consists of the following microservices:
+
+- **API Gateway**: Entry point for all client requests, routing to appropriate services
+- **Authentication Service**: User authentication and JWT token management
+- **User Service**: User profile and account management
+- **Survey Service**: Survey creation and management
+- **Survey Taking Service**: Handling survey responses
+- **Response Processor Service**: Asynchronous processing of survey responses
+- **Analytics Service**: Data analysis and reporting
 
 ## Project Structure
 
 ```
 .
 ├── backend/
+│   ├── api_gateway/           # API Gateway
 │   └── services/
-│       ├── auth_service/       # Authentication and authorization service
-│       ├── survey_service/     # Survey creation and management
-│       └── user_service/       # User management
-├── frontend/                   # Vue.js client application
-├── docker/                     # Docker-related files
-├── scripts/                    # Utility scripts
-└── docs/                       # Documentation
+│       ├── auth_service/      # Authentication and authorization service
+│       ├── user_service/      # User management
+│       ├── survey_service/    # Survey creation and management
+│       ├── survey_taking_service/  # Survey response submission
+│       ├── response_processor_service/  # Response processing
+│       └── analytics_service/ # Data analysis and reporting
+├── frontend/                  # Vue.js client application
+├── docker/                    # Docker-related files
+├── scripts/                   # Utility scripts
+└── docs/                      # Documentation
 ```
 
 ## Getting Started
@@ -58,6 +75,8 @@ This project is a microservice-based platform for conducting sociological survey
    ```
 
 4. Access the services:
+   - Frontend: http://localhost:80
+   - API Gateway: http://localhost:8000
    - PostgreSQL: localhost:5432
    - MongoDB: localhost:27017
    - RabbitMQ Management UI: http://localhost:15672
@@ -75,6 +94,30 @@ Each microservice follows a standard structure:
 ### Frontend (Vue.js)
 
 The frontend is a Vue.js 3 application using Composition API.
+
+### Testing
+
+The project includes several types of tests:
+
+- **Unit Tests**: For individual components and functions
+- **Integration Tests**: For testing microservices interaction
+- **E2E Tests**: End-to-end tests using Cypress (frontend)
+- **Contract Tests**: Ensuring compatibility between services
+
+Run the tests using:
+```
+# Run all tests
+go test ./...
+
+# Run specific service tests
+cd backend/services/auth_service
+go test ./...
+```
+
+## Documentation
+
+- **API Documentation**: OpenAPI specifications in `docs/api/`
+- **Architecture**: System design and patterns in `docs/architecture.md`
 
 ## Contributing
 
