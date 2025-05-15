@@ -1,0 +1,54 @@
+# Go related
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+go.work
+
+# Go binary directories
+bin/
+pkg/
+
+# Vue.js / Node.js related
+node_modules/
+npm-debug.log
+yarn-debug.log
+yarn-error.log
+/dist
+.env
+.env.local
+.env.*.local
+
+# Editor directories and files
+.idea/
+.vscode/
+*.suo
+*.ntvs*
+*.njsproj
+*.sln
+*.sw?
+.DS_Store
+
+# Docker volumes and data
+docker/volumes/
+*.log
+*.bak
+
+# Temporary files
+tmp/
+temp/
+
+# Binary builds
+__debug_bin
+backend/services/*/build/
+
+# IDE specific files
+.idea/
+.vscode/
+.cursor/
+.cursorrules
+*.sublime-project
+*.sublime-workspace 
