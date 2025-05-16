@@ -9,9 +9,20 @@ import (
 	"os/signal"
 	"syscall"
 	"time"
+
+	"github.com/VitaliySynytskyi/survey-platform/backend/services/template_service/internal/config"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	// Load .env file
+	if err := godotenv.Load(); err != nil {
+		log.Printf("Warning: Error loading .env file: %v", err)
+	}
+
+	// Load configuration
+	cfg := config.Load()
+
 	// Application name for logging
 	appName := "template-service"
 	log.Printf("Starting %s...", appName)

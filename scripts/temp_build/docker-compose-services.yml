@@ -1,0 +1,185 @@
+version: '3.8'
+
+services:
+  # Authentication Service
+  auth_service:
+    build:
+      context: ./auth_service
+    container_name: auth_service
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: survey_user
+      DB_PASSWORD: survey_password
+      DB_NAME: survey_platform
+      JWT_SECRET: your_jwt_secret_key
+      CONSUL_ADDR: consul:8500
+      SERVICE_NAME: auth_service
+    ports:
+      - "8080:8080"
+    depends_on:
+      - postgres
+      - consul
+    restart: unless-stopped
+
+  # User Service
+  user_service:
+    build:
+      context: ./user_service
+    container_name: user_service
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: survey_user
+      DB_PASSWORD: survey_password
+      DB_NAME: survey_platform
+      CONSUL_ADDR: consul:8500
+      SERVICE_NAME: user_service
+    ports:
+      - "8081:8081"
+    depends_on:
+      - postgres
+      - consul
+    restart: unless-stopped
+
+  # Survey Service
+  survey_service:
+    build:
+      context: ./survey_service
+    container_name: survey_service
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: survey_user
+      POSTGRES_PASSWORD: survey_password
+      POSTGRES_DB: survey_platform
+      MONGO_HOST: mongodb
+      MONGO_PORT: 27017
+      MONGO_USER: mongo_admin
+      MONGO_PASSWORD: mongo_password
+      MONGO_DB: survey_db
+      CONSUL_ADDR: consul:8500
+      SERVICE_NAME: survey_service
+    ports:
+      - "8082:8082"
+    depends_on:
+      - postgres
+      - mongodb
+      - consul
+    restart: unless-stopped
+
+  # Survey Taking Service
+  survey_taking_service:
+    build:
+      context: ./survey_taking_service
+    container_name: survey_taking_service
+    environment:
+      MONGO_HOST: mongodb
+      MONGO_PORT: 27017
+      MONGO_USER: mongo_admin
+      MONGO_PASSWORD: mongo_password
+      MONGO_DB: survey_db
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: rabbit_user
+      RABBITMQ_PASSWORD: rabbit_password
+      RABBITMQ_EXCHANGE: survey_responses
+      RABBITMQ_QUEUE: response_queue
+      RABBITMQ_ROUTING_KEY: response.new
+      CONSUL_ADDR: consul:8500
+      SERVICE_NAME: survey_taking_service
+    ports:
+      - "8083:8083"
+    depends_on:
+      - mongodb
+      - rabbitmq
+      - consul
+    restart: unless-stopped
+
+  # Response Processor Service
+  response_processor_service:
+    build:
+      context: ./response_processor_service
+    container_name: response_processor_service
+    environment:
+      MONGO_HOST: mongodb
+      MONGO_PORT: 27017
+      MONGO_USER: mongo_admin
+      MONGO_PASSWORD: mongo_password
+      MONGO_DB: survey_results
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: rabbit_user
+      RABBITMQ_PASSWORD: rabbit_password
+      RABBITMQ_EXCHANGE: survey_responses
+      RABBITMQ_QUEUE: response_queue
+      RABBITMQ_ROUTING_KEY: response.new
+      RABBITMQ_PREFETCH_COUNT: 10
+      CONSUL_ADDR: consul:8500
+      SERVICE_NAME: response_processor_service
+    depends_on:
+      - mongodb
+      - rabbitmq
+      - consul
+    restart: unless-stopped
+
+  # Analytics Service
+  analytics_service:
+    build:
+      context: ./analytics_service
+    container_name: analytics_service
+    environment:
+      MONGO_HOST: mongodb
+      MONGO_PORT: 27017
+      MONGO_USER: mongo_admin
+      MONGO_PASSWORD: mongo_password
+      MONGO_DB: survey_results
+      CONSUL_ADDR: consul:8500
+      SERVICE_NAME: analytics_service
+    ports:
+      - "8084:8084"
+    depends_on:
+      - mongodb
+      - consul
+    restart: unless-stopped
+
+  # API Gateway
+  api_gateway:
+    build:
+      context: ./api_gateway
+    container_name: api_gateway
+    environment:
+      AUTH_SERVICE_URL: http://auth_service:8080
+      USER_SERVICE_URL: http://user_service:8081
+      SURVEY_SERVICE_URL: http://survey_service:8082
+      SURVEY_TAKING_SERVICE_URL: http://survey_taking_service:8083
+      ANALYTICS_SERVICE_URL: http://analytics_service:8084
+      CONSUL_ADDR: consul:8500
+      CONSUL_ENABLED: "true"
+      USE_CONSUL_FOR_SD: "true"
+    ports:
+      - "8000:8000"
+    depends_on:
+      - auth_service
+      - user_service
+      - survey_service
+      - survey_taking_service
+      - analytics_service
+      - consul
+    restart: unless-stopped
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+    container_name: frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - api_gateway
+    restart: unless-stopped
+
+networks:
+  default:
+    name: microservices-survey-app3_default
+    external: true

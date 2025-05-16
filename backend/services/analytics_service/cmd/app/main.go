@@ -16,9 +16,15 @@ import (
 	"github.com/VitaliySynytskyi/survey-platform/backend/services/analytics_service/internal/db"
 	"github.com/VitaliySynytskyi/survey-platform/backend/services/analytics_service/internal/service"
 	"github.com/google/uuid"
+	"github.com/joho/godotenv"
 )
 
 func main() {
+	// Load .env file
+	if err := godotenv.Load(); err != nil {
+		log.Printf("Warning: Error loading .env file: %v", err)
+	}
+
 	// Load configuration
 	cfg := config.Load()
 

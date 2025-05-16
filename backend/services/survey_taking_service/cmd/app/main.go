@@ -14,6 +14,7 @@ import (
 	consul "github.com/VitaliySynytskyi/survey-platform/backend/pkg/consul"
 	"github.com/google/uuid"
 	"github.com/gorilla/mux"
+	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 
@@ -24,6 +25,11 @@ import (
 )
 
 func main() {
+	// Load .env file
+	if err := godotenv.Load(); err != nil {
+		log.Printf("Warning: Error loading .env file: %v", err)
+	}
+
 	// Load configuration
 	cfg := config.Load()
 

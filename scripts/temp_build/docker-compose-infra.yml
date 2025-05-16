@@ -1,0 +1,83 @@
+version: '3.8'
+
+services:
+  # Consul service for Service Discovery
+  consul:
+    image: hashicorp/consul:1.15
+    container_name: consul
+    ports:
+      - "8500:8500"  # UI and API
+      - "8600:8600/udp"  # DNS interface
+    volumes:
+      - consul_data:/consul/data
+    environment:
+      - CONSUL_BIND_INTERFACE=eth0
+      - CONSUL_LOCAL_CONFIG={"datacenter":"dc1"}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # PostgreSQL service
+  postgres:
+    image: postgres:15-alpine
+    container_name: postgres
+    environment:
+      POSTGRES_USER: survey_user
+      POSTGRES_PASSWORD: survey_password
+      POSTGRES_DB: survey_platform
+    ports:
+      - "5432:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U survey_user -d survey_platform"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MongoDB service
+  mongodb:
+    image: mongo:6
+    container_name: mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: mongo_admin
+      MONGO_INITDB_ROOT_PASSWORD: mongo_password
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # RabbitMQ service
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    container_name: rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: rabbit_user
+      RABBITMQ_DEFAULT_PASS: rabbit_password
+    ports:
+      - "5672:5672"   # AMQP protocol port
+      - "15672:15672" # Management UI port
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+volumes:
+  postgres_data:
+  mongodb_data:
+  rabbitmq_data:
+  consul_data: 

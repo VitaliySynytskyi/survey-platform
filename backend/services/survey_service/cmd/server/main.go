@@ -16,16 +16,19 @@ import (
 	"github.com/VitaliySynytskyi/microservices-survey-app/backend/services/survey_service/internal/store/mongodb"
 	consul "github.com/VitaliySynytskyi/survey-platform/backend/pkg/consul"
 	"github.com/google/uuid"
+	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
 
 func main() {
-	// Завантаження конфігурації
-	cfg, err := config.LoadConfig()
-	if err != nil {
-		log.Fatalf("Failed to load configuration: %v", err)
+	// Load .env file
+	if err := godotenv.Load(); err != nil {
+		log.Printf("Warning: Error loading .env file: %v", err)
 	}
+
+	// Load configuration
+	cfg := config.Load()
 
 	// Підключення до MongoDB
 	mongoClient, err := connectToMongoDB(cfg.MongoDB.URI)

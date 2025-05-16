@@ -1,20 +1,17 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.22-alpine AS builder
 
-# Set working directory
-WORKDIR /app
+# Set working directory that matches go module path
+WORKDIR /src/github.com/VitaliySynytskyi/survey-platform
 
-# Copy go.mod and go.sum files
-COPY go.mod ./
-
-# Download dependencies
-RUN go mod download
-
-# Copy source code
+# Copy the entire project
 COPY . .
 
+# Download dependencies
+RUN cd backend/services/analytics_service && go mod download
+
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/server/main.go
+RUN cd backend/services/analytics_service && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/app/main.go
 
 # Final stage
 FROM alpine:3.18
@@ -26,7 +23,7 @@ RUN apk --no-cache add ca-certificates tzdata
 WORKDIR /app
 
 # Copy the binary from builder
-COPY --from=builder /app/main .
+COPY --from=builder /src/github.com/VitaliySynytskyi/survey-platform/backend/services/analytics_service/main .
 
 # Create non-root user
 RUN adduser -D -g '' appuser

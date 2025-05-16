@@ -7,7 +7,7 @@ import (
 	"regexp"
 	"time"
 
-	"github.com/VitaliySynytskyi/microservices-survey-app/backend/services/survey_service/internal/domain/models"
+	"github.com/VitaliySynytskyi/survey-platform/backend/services/survey_service/internal/domain/models"
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -114,7 +114,31 @@ func (r *SurveyRepository) GetByID(ctx context.Context, id string) (*models.Surv
 	return &survey, nil
 }
 
-// Update оновлює опитуванняfunc (r *SurveyRepository) Update(ctx context.Context, survey *models.Survey) error {	// Встановлення часу оновлення	survey.UpdatedAt = time.Now()	// Генерація ID для нових питань	for i := range survey.Questions {		if survey.Questions[i].ID == "" {			survey.Questions[i].ID = primitive.NewObjectID().Hex()		}	}	// Оновлення документа	result, err := r.collection.ReplaceOne(		ctx,		bson.M{"_id": survey.ID},		survey,	)	if err != nil {		return fmt.Errorf("failed to update survey: %w", err)	}	if result.MatchedCount == 0 {		return ErrNotFound	}	return nil
+// Update оновлює опитування
+func (r *SurveyRepository) Update(ctx context.Context, survey *models.Survey) error {
+	// Встановлення часу оновлення
+	survey.UpdatedAt = time.Now()
+
+	// Генерація ID для нових питань
+	for i := range survey.Questions {
+		if survey.Questions[i].ID == "" {
+			survey.Questions[i].ID = primitive.NewObjectID().Hex()
+		}
+	}
+
+	// Оновлення документа
+	result, err := r.collection.ReplaceOne(
+		ctx,
+		bson.M{"_id": survey.ID},
+		survey,
+	)
+	if err != nil {
+		return fmt.Errorf("failed to update survey: %w", err)
+	}
+	if result.MatchedCount == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // Delete видаляє опитування за ID
@@ -124,7 +148,19 @@ func (r *SurveyRepository) Delete(ctx context.Context, id string) error {
 		return err
 	}
 
-		objID, err := primitive.ObjectIDFromHex(id)	if err != nil {		return fmt.Errorf("failed to parse object ID: %w", err)	}	result, err := r.collection.DeleteOne(ctx, bson.M{"_id": objID})	if err != nil {		return fmt.Errorf("failed to delete survey: %w", err)	}	if result.DeletedCount == 0 {		return ErrNotFound	}	return nil
+	objID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return fmt.Errorf("failed to parse object ID: %w", err)
+	}
+
+	result, err := r.collection.DeleteOne(ctx, bson.M{"_id": objID})
+	if err != nil {
+		return fmt.Errorf("failed to delete survey: %w", err)
+	}
+	if result.DeletedCount == 0 {
+		return ErrNotFound
+	}
+	return nil
 }
 
 // GetByOwnerID отримує список опитувань за ID власника з пагінацією

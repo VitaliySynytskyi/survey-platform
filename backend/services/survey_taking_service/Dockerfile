@@ -1,5 +1,5 @@
 # Build stage
-FROM golang:1.21-alpine AS builder
+FROM golang:1.22-alpine AS builder
 
 # Set working directory
 WORKDIR /app
@@ -33,7 +33,7 @@ RUN adduser -D -g '' appuser
 USER appuser
 
 # Expose application port
-EXPOSE 8082
+EXPOSE 8083
 
 # Command to run the application
 CMD ["./main"] 
