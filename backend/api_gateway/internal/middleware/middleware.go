@@ -6,6 +6,10 @@ import (
 	"time"
 
 	"github.com/VitaliySynytskyi/survey-platform/backend/api_gateway/internal/config"
+	"github.com/VitaliySynytskyi/survey-platform/backend/pkg/tracing"
+	"github.com/go-chi/chi/v5"
+	"github.com/go-chi/chi/v5/middleware"
+	"github.com/go-chi/cors"
 	"golang.org/x/time/rate"
 )
 
@@ -85,6 +89,11 @@ func AddRateLimiting(handler http.Handler, cfg config.RateLimitingConfig) http.H
 	})
 }
 
+// AddCorrelationID adds correlation ID middleware for distributed tracing
+func AddCorrelationID(handler http.Handler) http.Handler {
+	return tracing.Middleware(handler)
+}
+
 // responseWriter is a custom response writer that captures the status code
 type responseWriter struct {
 	http.ResponseWriter
@@ -117,4 +126,26 @@ func joinStringSlice(slice []string) string {
 	}
 
 	return result
+}
+
+// RegisterMiddleware реєструє всі middleware
+func RegisterMiddleware(r *chi.Mux, cfg *config.Config) {
+	// Standard middleware
+	r.Use(middleware.RequestID)
+	r.Use(middleware.RealIP)
+	r.Use(middleware.Logger)
+	r.Use(middleware.Recoverer)
+	r.Use(middleware.Timeout(30 * time.Second))
+
+	// Correlation ID middleware for distributed tracing
+	r.Use(tracing.Middleware)
+
+	// CORS configuration
+	r.Use(cors.Handler(cors.Options{
+		AllowedOrigins:   []string{"http://localhost:80", "http://localhost:3000"},
+		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
+		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Correlation-ID"},
+		AllowCredentials: true,
+		MaxAge:           300, // Maximum cache age for preflight options request
+	}))
 }
