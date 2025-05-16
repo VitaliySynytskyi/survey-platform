@@ -14,6 +14,7 @@ type Config struct {
 	CORS           CORSConfig
 	RateLimiting   RateLimitingConfig
 	CircuitBreaker CircuitBreakerConfig
+	Consul         ConsulConfig
 }
 
 // ServerConfig holds the HTTP server configuration
@@ -22,6 +23,13 @@ type ServerConfig struct {
 	ReadTimeout  time.Duration
 	WriteTimeout time.Duration
 	IdleTimeout  time.Duration
+}
+
+// ConsulConfig holds the configuration for Consul service discovery
+type ConsulConfig struct {
+	Enabled  bool
+	Address  string
+	UseForSD bool // Whether to use Consul for service discovery
 }
 
 // ServicesConfig holds the configuration for different services
@@ -77,6 +85,11 @@ func Load() *Config {
 			ReadTimeout:  getEnvDuration("READ_TIMEOUT", 10*time.Second),
 			WriteTimeout: getEnvDuration("WRITE_TIMEOUT", 10*time.Second),
 			IdleTimeout:  getEnvDuration("IDLE_TIMEOUT", 15*time.Second),
+		},
+		Consul: ConsulConfig{
+			Enabled:  getEnvBool("CONSUL_ENABLED", true),
+			Address:  getEnv("CONSUL_ADDR", "consul:8500"),
+			UseForSD: getEnvBool("USE_CONSUL_FOR_SD", true),
 		},
 		Services: ServicesConfig{
 			Auth: ServiceConfig{

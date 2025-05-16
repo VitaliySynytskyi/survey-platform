@@ -1,6 +1,25 @@
 version: '3.8'
 
 services:
+  # Consul service for Service Discovery
+  consul:
+    image: hashicorp/consul:1.15
+    container_name: consul
+    ports:
+      - "8500:8500"  # UI and API
+      - "8600:8600/udp"  # DNS interface
+    volumes:
+      - consul_data:/consul/data
+    environment:
+      - CONSUL_BIND_INTERFACE=eth0
+      - CONSUL_LOCAL_CONFIG={"datacenter":"dc1"}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
   # PostgreSQL service
   postgres:
     image: postgres:15-alpine
@@ -66,10 +85,14 @@ services:
       DB_PASSWORD: survey_password
       DB_NAME: survey_platform
       JWT_SECRET: your_jwt_secret_key
+      CONSUL_ADDR: consul:8500
+      SERVICE_NAME: auth_service
     ports:
       - "8080:8080"
     depends_on:
       postgres:
+        condition: service_healthy
+      consul:
         condition: service_healthy
     restart: unless-stopped
 
@@ -84,10 +107,14 @@ services:
       DB_USER: survey_user
       DB_PASSWORD: survey_password
       DB_NAME: survey_platform
+      CONSUL_ADDR: consul:8500
+      SERVICE_NAME: user_service
     ports:
       - "8081:8081"
     depends_on:
       postgres:
+        condition: service_healthy
+      consul:
         condition: service_healthy
     restart: unless-stopped
 
@@ -107,12 +134,16 @@ services:
       MONGO_USER: mongo_admin
       MONGO_PASSWORD: mongo_password
       MONGO_DB: survey_db
+      CONSUL_ADDR: consul:8500
+      SERVICE_NAME: survey_service
     ports:
       - "8082:8082"
     depends_on:
       postgres:
         condition: service_healthy
       mongodb:
+        condition: service_healthy
+      consul:
         condition: service_healthy
     restart: unless-stopped
 
@@ -134,12 +165,16 @@ services:
       RABBITMQ_EXCHANGE: survey_responses
       RABBITMQ_QUEUE: response_queue
       RABBITMQ_ROUTING_KEY: response.new
+      CONSUL_ADDR: consul:8500
+      SERVICE_NAME: survey_taking_service
     ports:
       - "8083:8083"
     depends_on:
       mongodb:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      consul:
         condition: service_healthy
     restart: unless-stopped
 
@@ -162,10 +197,14 @@ services:
       RABBITMQ_QUEUE: response_queue
       RABBITMQ_ROUTING_KEY: response.new
       RABBITMQ_PREFETCH_COUNT: 10
+      CONSUL_ADDR: consul:8500
+      SERVICE_NAME: response_processor_service
     depends_on:
       mongodb:
         condition: service_healthy
       rabbitmq:
+        condition: service_healthy
+      consul:
         condition: service_healthy
     restart: unless-stopped
 
@@ -180,10 +219,14 @@ services:
       MONGO_USER: mongo_admin
       MONGO_PASSWORD: mongo_password
       MONGO_DB: survey_results
+      CONSUL_ADDR: consul:8500
+      SERVICE_NAME: analytics_service
     ports:
       - "8084:8084"
     depends_on:
       mongodb:
+        condition: service_healthy
+      consul:
         condition: service_healthy
     restart: unless-stopped
 
@@ -198,6 +241,9 @@ services:
       SURVEY_SERVICE_URL: http://survey_service:8082
       SURVEY_TAKING_SERVICE_URL: http://survey_taking_service:8083
       ANALYTICS_SERVICE_URL: http://analytics_service:8084
+      CONSUL_ADDR: consul:8500
+      CONSUL_ENABLED: "true"
+      USE_CONSUL_FOR_SD: "true"
     ports:
       - "8000:8000"
     depends_on:
@@ -206,6 +252,7 @@ services:
       - survey_service
       - survey_taking_service
       - analytics_service
+      - consul
     restart: unless-stopped
 
   # Frontend
@@ -222,4 +269,5 @@ services:
 volumes:
   postgres_data:
   mongodb_data:
-  rabbitmq_data: 
+  rabbitmq_data:
+  consul_data: 

@@ -95,6 +95,9 @@ func (s *Server) SetupRoutes() http.Handler {
 		MaxAge:           300, // Maximum cache age for preflight options request
 	}))
 
+	// Health check endpoint
+	r.Get("/health", s.healthCheckHandler)
+
 	// Auth routes - no authentication needed
 	r.Route("/auth", func(r chi.Router) {
 		r.Post("/register", s.handler.RegisterHandler)
@@ -107,6 +110,24 @@ func (s *Server) SetupRoutes() http.Handler {
 	})
 
 	return r
+}
+
+// healthCheckHandler checks if the service and its dependencies are healthy
+func (s *Server) healthCheckHandler(w http.ResponseWriter, r *http.Request) {
+	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
+	defer cancel()
+
+	// Check database connection
+	if err := s.userStore.Ping(ctx); err != nil {
+		log.Printf("Health check failed: database connection error: %v", err)
+		w.WriteHeader(http.StatusServiceUnavailable)
+		w.Write([]byte("Service Unhealthy: database connection error"))
+		return
+	}
+
+	// Service is healthy
+	w.WriteHeader(http.StatusOK)
+	w.Write([]byte("Service Healthy"))
 }
 
 // Start starts the HTTP server

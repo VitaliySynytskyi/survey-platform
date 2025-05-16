@@ -6,6 +6,7 @@ import (
 	"strings"
 
 	"github.com/VitaliySynytskyi/survey-platform/backend/api_gateway/internal/config"
+	"github.com/VitaliySynytskyi/survey-platform/backend/api_gateway/internal/discovery"
 )
 
 // RouterType represents the type of router
@@ -28,17 +29,26 @@ type Route struct {
 
 // ProxyRouter is a router that proxies requests to different services
 type ProxyRouter struct {
-	routes  []Route
-	proxies map[string]*ServiceProxy
-	config  *config.Config
+	routes    []Route
+	proxies   map[string]*ServiceProxy
+	config    *config.Config
+	discovery discovery.ServiceDiscovery
 }
 
 // NewProxyRouter creates a new ProxyRouter
 func NewProxyRouter(cfg *config.Config) (*ProxyRouter, error) {
+	// Initialize service discovery
+	discovery, err := discovery.NewServiceDiscovery(cfg)
+	if err != nil {
+		log.Printf("Warning: Failed to initialize service discovery: %v", err)
+		// Continue without service discovery
+	}
+
 	router := &ProxyRouter{
-		routes:  defineRoutes(),
-		proxies: make(map[string]*ServiceProxy),
-		config:  cfg,
+		routes:    defineRoutes(),
+		proxies:   make(map[string]*ServiceProxy),
+		config:    cfg,
+		discovery: discovery,
 	}
 
 	// Initialize proxies for each service
@@ -97,42 +107,42 @@ func (r *ProxyRouter) matchRoute(route Route, path string) bool {
 // initProxies initializes the service proxies
 func (r *ProxyRouter) initProxies() error {
 	// Create proxy for auth service
-	authProxy, err := NewServiceProxy(r.config.Services.Auth, r.config.CircuitBreaker)
+	authProxy, err := NewServiceProxy("auth", r.config.Services.Auth, r.config.CircuitBreaker, r.discovery)
 	if err != nil {
 		return err
 	}
 	r.proxies["auth"] = authProxy
 
 	// Create proxy for user service
-	userProxy, err := NewServiceProxy(r.config.Services.User, r.config.CircuitBreaker)
+	userProxy, err := NewServiceProxy("user", r.config.Services.User, r.config.CircuitBreaker, r.discovery)
 	if err != nil {
 		return err
 	}
 	r.proxies["user"] = userProxy
 
 	// Create proxy for survey service
-	surveyProxy, err := NewServiceProxy(r.config.Services.Survey, r.config.CircuitBreaker)
+	surveyProxy, err := NewServiceProxy("survey", r.config.Services.Survey, r.config.CircuitBreaker, r.discovery)
 	if err != nil {
 		return err
 	}
 	r.proxies["survey"] = surveyProxy
 
 	// Create proxy for survey taking service
-	surveyTakingProxy, err := NewServiceProxy(r.config.Services.SurveyTaking, r.config.CircuitBreaker)
+	surveyTakingProxy, err := NewServiceProxy("survey_taking", r.config.Services.SurveyTaking, r.config.CircuitBreaker, r.discovery)
 	if err != nil {
 		return err
 	}
 	r.proxies["survey_taking"] = surveyTakingProxy
 
 	// Create proxy for response processor service
-	responseProcessorProxy, err := NewServiceProxy(r.config.Services.ResponseProcessor, r.config.CircuitBreaker)
+	responseProcessorProxy, err := NewServiceProxy("response_processor", r.config.Services.ResponseProcessor, r.config.CircuitBreaker, r.discovery)
 	if err != nil {
 		return err
 	}
 	r.proxies["response_processor"] = responseProcessorProxy
 
 	// Create proxy for analytics service
-	analyticsProxy, err := NewServiceProxy(r.config.Services.Analytics, r.config.CircuitBreaker)
+	analyticsProxy, err := NewServiceProxy("analytics", r.config.Services.Analytics, r.config.CircuitBreaker, r.discovery)
 	if err != nil {
 		return err
 	}

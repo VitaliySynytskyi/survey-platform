@@ -10,18 +10,22 @@ import (
 	"time"
 
 	"github.com/VitaliySynytskyi/survey-platform/backend/api_gateway/internal/config"
+	"github.com/VitaliySynytskyi/survey-platform/backend/api_gateway/internal/discovery"
 )
 
 // ServiceProxy represents an HTTP proxy to a microservice
 type ServiceProxy struct {
+	serviceName    string
 	config         config.ServiceConfig
 	circuitConfig  config.CircuitBreakerConfig
 	proxy          *httputil.ReverseProxy
 	circuitBreaker *CircuitBreaker
+	discovery      discovery.ServiceDiscovery
 }
 
 // NewServiceProxy creates a new ServiceProxy
-func NewServiceProxy(serviceConfig config.ServiceConfig, circuitConfig config.CircuitBreakerConfig) (*ServiceProxy, error) {
+func NewServiceProxy(serviceName string, serviceConfig config.ServiceConfig, circuitConfig config.CircuitBreakerConfig, discovery discovery.ServiceDiscovery) (*ServiceProxy, error) {
+	// Get the initial service URL (it will be updated dynamically if using service discovery)
 	serviceURL, err := url.Parse(serviceConfig.URL)
 	if err != nil {
 		return nil, fmt.Errorf("invalid service URL: %w", err)
@@ -39,6 +43,15 @@ func NewServiceProxy(serviceConfig config.ServiceConfig, circuitConfig config.Ci
 	// Override the default director to add service-specific headers or do other manipulations
 	defaultDirector := proxy.Director
 	proxy.Director = func(req *http.Request) {
+		// If using service discovery, update the target URL
+		if discovery != nil {
+			if discoveredURL, err := discovery.GetServiceURL(serviceName); err == nil {
+				newURL, _ := url.Parse(discoveredURL)
+				req.URL.Scheme = newURL.Scheme
+				req.URL.Host = newURL.Host
+			}
+		}
+
 		defaultDirector(req)
 		req.Header.Set("X-Proxy-Time", time.Now().String())
 		req.Header.Set("X-Forwarded-For", req.RemoteAddr)
@@ -55,10 +68,12 @@ func NewServiceProxy(serviceConfig config.ServiceConfig, circuitConfig config.Ci
 	}
 
 	return &ServiceProxy{
+		serviceName:    serviceName,
 		config:         serviceConfig,
 		circuitConfig:  circuitConfig,
 		proxy:          proxy,
 		circuitBreaker: cb,
+		discovery:      discovery,
 	}, nil
 }
 

@@ -279,8 +279,11 @@ func TestHandleDelivery(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
+			// Use type assertion to ensure the mock is treated as a db.Repository
+			var repository db.Repository = tt.repository
+
 			consumer := &Consumer{
-				repository: tt.repository,
+				repository: repository,
 			}
 
 			mockDelivery := amqp.Delivery{
@@ -302,6 +305,7 @@ func TestHandleDelivery(t *testing.T) {
 				t.Errorf("handleDelivery() ack called = %v, want %v", tt.delivery.ackCalled, tt.wantAck)
 			}
 
+			// Check processed messages count based on the mock repository
 			if len(tt.repository.ProcessedMessages) != tt.wantProcessCount {
 				t.Errorf("handleDelivery() processed messages count = %v, want %v", len(tt.repository.ProcessedMessages), tt.wantProcessCount)
 			}

@@ -177,3 +177,8 @@ func (s *PostgresStore) EmailExists(ctx context.Context, email string) (bool, er
 
 	return exists, nil
 }
+
+// Ping checks if the database connection is alive
+func (s *PostgresStore) Ping(ctx context.Context) error {
+	return s.db.Ping(ctx)
+}

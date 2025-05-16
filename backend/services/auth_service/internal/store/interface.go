@@ -24,6 +24,9 @@ type UserStore interface {
 	// EnsureSchema ensures that the required database schema exists
 	EnsureSchema(ctx context.Context) error
 
+	// Ping checks if the database connection is alive
+	Ping(ctx context.Context) error
+
 	// Close closes the database connection
 	Close()
 }
