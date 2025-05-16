@@ -27,6 +27,9 @@ type UserStore interface {
 	// EmailExists checks if an email already exists (excluding the given user ID)
 	EmailExists(ctx context.Context, email string, excludeID uuid.UUID) (bool, error)
 
+	// Ping checks if the database connection is alive
+	Ping() error
+
 	// Close closes the database connection
 	Close()
 }

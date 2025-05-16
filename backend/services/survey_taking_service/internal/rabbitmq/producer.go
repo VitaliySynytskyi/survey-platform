@@ -109,3 +109,8 @@ func (p *Producer) Close() error {
 	}
 	return nil
 }
+
+// GetConnection returns the underlying RabbitMQ connection
+func (p *Producer) GetConnection() *amqp.Connection {
+	return p.conn
+}

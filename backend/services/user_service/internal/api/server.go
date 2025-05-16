@@ -71,12 +71,15 @@ func (s *Server) SetupRoutes() http.Handler {
 
 	// CORS configuration
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"*"}, // In production, you should specify actual origins
+		AllowedOrigins:   []string{"http://localhost:80", "http://localhost:3000"}, // Replaced "*" with specific allowed origins
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		AllowCredentials: true,
 		MaxAge:           300, // Maximum cache age for preflight options request
 	}))
+
+	// Health check endpoint - public access
+	r.Get("/health", s.handler.HealthCheckHandler)
 
 	// Public routes - no authentication needed
 	// None for this service

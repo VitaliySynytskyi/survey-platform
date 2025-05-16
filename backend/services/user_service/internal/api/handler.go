@@ -281,3 +281,35 @@ func (h *UserHandler) UpdateRoleHandler(w http.ResponseWriter, r *http.Request) 
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(user.ToResponse())
 }
+
+// HealthStatus represents the status of the service and its dependencies
+type HealthStatus struct {
+	Status      string `json:"status"`
+	Database    string `json:"database,omitempty"`
+	Details     string `json:"details,omitempty"`
+	ServiceName string `json:"service_name"`
+}
+
+// HealthCheckHandler handles the /health endpoint
+func (h *UserHandler) HealthCheckHandler(w http.ResponseWriter, r *http.Request) {
+	status := HealthStatus{
+		Status:      "healthy",
+		ServiceName: "user_service",
+	}
+
+	// Check database connection
+	err := h.userStore.Ping()
+	if err != nil {
+		status.Status = "unhealthy"
+		status.Database = "disconnected"
+		status.Details = err.Error()
+		w.WriteHeader(http.StatusServiceUnavailable)
+	} else {
+		status.Database = "connected"
+		w.WriteHeader(http.StatusOK)
+	}
+
+	// Return JSON response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(status)
+}

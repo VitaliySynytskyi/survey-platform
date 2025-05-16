@@ -13,11 +13,20 @@ type Config struct {
 	Server       ServerConfig
 	Database     DatabaseConfig
 	JWTSecretKey string
+	Consul       ConsulConfig
+	ServiceName  string
+}
+
+// ConsulConfig holds all Consul configuration
+type ConsulConfig struct {
+	Address string
+	Enabled bool
 }
 
 // ServerConfig holds all server configuration
 type ServerConfig struct {
 	Port string
+	Host string
 }
 
 // DatabaseConfig holds all database configuration
@@ -41,6 +50,7 @@ func Load() *Config {
 	return &Config{
 		Server: ServerConfig{
 			Port: getEnv("PORT", "8081"), // Different port from auth_service
+			Host: getEnv("HOST", "0.0.0.0"),
 		},
 		Database: DatabaseConfig{
 			Host:     getEnv("DB_HOST", "localhost"),
@@ -51,6 +61,11 @@ func Load() *Config {
 			SSLMode:  getEnv("DB_SSL_MODE", "disable"),
 		},
 		JWTSecretKey: getEnv("JWT_SECRET", "your-secret-key-change-in-production"),
+		Consul: ConsulConfig{
+			Address: getEnv("CONSUL_ADDR", "consul:8500"),
+			Enabled: getBoolEnv("CONSUL_ENABLED", true),
+		},
+		ServiceName: getEnv("SERVICE_NAME", "user_service"),
 	}
 }
 
@@ -72,6 +87,22 @@ func getIntEnv(key string, defaultValue int) int {
 	val, err := strconv.Atoi(valStr)
 	if err != nil {
 		log.Printf("Warning: Invalid integer for %s. Using default value.", key)
+		return defaultValue
+	}
+
+	return val
+}
+
+// Helper function to get a boolean from an environment variable
+func getBoolEnv(key string, defaultValue bool) bool {
+	valStr := getEnv(key, "")
+	if valStr == "" {
+		return defaultValue
+	}
+
+	val, err := strconv.ParseBool(valStr)
+	if err != nil {
+		log.Printf("Warning: Invalid boolean for %s. Using default value.", key)
 		return defaultValue
 	}
 

@@ -10,14 +10,17 @@ import (
 
 // Config представляє конфігурацію сервісу
 type Config struct {
-	Server  ServerConfig
-	MongoDB MongoDBConfig
-	Auth    AuthConfig
+	Server      ServerConfig
+	MongoDB     MongoDBConfig
+	Auth        AuthConfig
+	Consul      ConsulConfig
+	ServiceName string
 }
 
 // ServerConfig представляє конфігурацію веб-сервера
 type ServerConfig struct {
 	Port int
+	Host string
 }
 
 // MongoDBConfig представляє конфігурацію MongoDB
@@ -31,6 +34,12 @@ type AuthConfig struct {
 	JWTSecret string
 }
 
+// ConsulConfig представляє конфігурацію Consul
+type ConsulConfig struct {
+	Address string
+	Enabled bool
+}
+
 // LoadConfig завантажує конфігурацію з середовища
 func LoadConfig() (*Config, error) {
 	// Завантаження змінних середовища з .env файлу, якщо він існує
@@ -41,6 +50,7 @@ func LoadConfig() (*Config, error) {
 	if err != nil {
 		return nil, fmt.Errorf("invalid server port: %w", err)
 	}
+	host := getEnv("SERVER_HOST", "0.0.0.0")
 
 	// Конфігурація MongoDB
 	mongoURI := getEnv("MONGO_URI", "mongodb://localhost:27017")
@@ -52,9 +62,15 @@ func LoadConfig() (*Config, error) {
 		return nil, fmt.Errorf("JWT_SECRET is required")
 	}
 
+	// Конфігурація Consul
+	consulEnabled, _ := strconv.ParseBool(getEnv("CONSUL_ENABLED", "true"))
+	consulAddress := getEnv("CONSUL_ADDR", "consul:8500")
+	serviceName := getEnv("SERVICE_NAME", "survey_service")
+
 	return &Config{
 		Server: ServerConfig{
 			Port: port,
+			Host: host,
 		},
 		MongoDB: MongoDBConfig{
 			URI:      mongoURI,
@@ -63,6 +79,11 @@ func LoadConfig() (*Config, error) {
 		Auth: AuthConfig{
 			JWTSecret: jwtSecret,
 		},
+		Consul: ConsulConfig{
+			Address: consulAddress,
+			Enabled: consulEnabled,
+		},
+		ServiceName: serviceName,
 	}, nil
 }
 

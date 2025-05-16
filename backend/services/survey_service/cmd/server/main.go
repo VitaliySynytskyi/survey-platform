@@ -14,6 +14,8 @@ import (
 	"github.com/VitaliySynytskyi/microservices-survey-app/backend/services/survey_service/internal/api/handlers"
 	"github.com/VitaliySynytskyi/microservices-survey-app/backend/services/survey_service/internal/config"
 	"github.com/VitaliySynytskyi/microservices-survey-app/backend/services/survey_service/internal/store/mongodb"
+	consul "github.com/VitaliySynytskyi/survey-platform/backend/pkg/consul"
+	"github.com/google/uuid"
 	"go.mongodb.org/mongo-driver/mongo"
 	"go.mongodb.org/mongo-driver/mongo/options"
 )
@@ -40,7 +42,40 @@ func main() {
 	surveyHandler := handlers.NewSurveyHandler(repository)
 
 	// Ініціалізація маршрутизатора
-	router := api.NewRouter(cfg, surveyHandler)
+	router := api.NewRouter(cfg, surveyHandler, mongoClient)
+
+	// Initialize Consul client if enabled
+	var consulClient *consul.Client
+	var serviceID string
+	if cfg.Consul.Enabled {
+		consulClient, err = consul.NewClient(cfg.Consul.Address)
+		if err != nil {
+			log.Printf("Warning: Failed to create Consul client: %v", err)
+		} else {
+			// Generate a unique ID for this service instance
+			serviceID = fmt.Sprintf("%s-%s", cfg.ServiceName, uuid.New().String())
+
+			// Register service with Consul
+			serviceAddress := cfg.Server.Host
+			servicePort := cfg.Server.Port
+			healthCheckURL := fmt.Sprintf("http://%s:%d/health", serviceAddress, servicePort)
+
+			err = consulClient.RegisterService(
+				serviceID,
+				cfg.ServiceName,
+				serviceAddress,
+				servicePort,
+				[]string{},
+				healthCheckURL,
+			)
+
+			if err != nil {
+				log.Printf("Warning: Failed to register service with Consul: %v", err)
+			} else {
+				log.Printf("Service registered with Consul: %s", serviceID)
+			}
+		}
+	}
 
 	// Налаштування HTTP-сервера
 	server := &http.Server{
@@ -64,6 +99,15 @@ func main() {
 	signal.Notify(quit, syscall.SIGINT, syscall.SIGTERM)
 	<-quit
 	log.Println("Shutting down server...")
+
+	// Deregister service from Consul if it was registered
+	if cfg.Consul.Enabled && consulClient != nil && serviceID != "" {
+		if err := consulClient.DeregisterService(serviceID); err != nil {
+			log.Printf("Warning: Failed to deregister service from Consul: %v", err)
+		} else {
+			log.Printf("Service deregistered from Consul: %s", serviceID)
+		}
+	}
 
 	// Встановлення таймауту для завершення
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)

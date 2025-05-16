@@ -7,10 +7,11 @@ import (
 	"github.com/VitaliySynytskyi/microservices-survey-app/backend/services/survey_service/internal/api/handlers/middleware"
 	"github.com/VitaliySynytskyi/microservices-survey-app/backend/services/survey_service/internal/config"
 	"github.com/gorilla/mux"
+	"go.mongodb.org/mongo-driver/mongo"
 )
 
 // NewRouter створює та налаштовує маршрутизатор API
-func NewRouter(cfg *config.Config, surveyHandler *handlers.SurveyHandler) http.Handler {
+func NewRouter(cfg *config.Config, surveyHandler *handlers.SurveyHandler, mongoClient *mongo.Client) http.Handler {
 	router := mux.NewRouter()
 
 	// Middleware для всіх запитів
@@ -23,6 +24,10 @@ func NewRouter(cfg *config.Config, surveyHandler *handlers.SurveyHandler) http.H
 
 	// Middleware для автентифікації
 	authMiddleware := middleware.AuthMiddleware(cfg)
+
+	// Health check ендпоінт - публічний доступ
+	healthHandler := handlers.NewHealthHandler(mongoClient, cfg.ServiceName)
+	router.HandleFunc("/health", healthHandler.HealthCheck).Methods("GET")
 
 	// API ендпоінти
 	api := router.PathPrefix("/api/v1").Subrouter()
