@@ -90,3 +90,17 @@ func (r *ResponseRepository) ProcessRabbitMQMessage(ctx context.Context, message
 func (r *ResponseRepository) Close(ctx context.Context) error {
 	return r.client.Disconnect(ctx)
 }
+
+// CheckHealth verifies the MongoDB connection is healthy
+func (r *ResponseRepository) CheckHealth(ctx context.Context) error {
+	// Create a short timeout context
+	healthCtx, cancel := context.WithTimeout(ctx, 5*time.Second)
+	defer cancel()
+
+	// Ping the database
+	if err := r.client.Ping(healthCtx, nil); err != nil {
+		return fmt.Errorf("failed to ping MongoDB: %w", err)
+	}
+
+	return nil
+}

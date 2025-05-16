@@ -11,4 +11,5 @@ type Repository interface {
 	ProcessRabbitMQMessage(ctx context.Context, message *model.RabbitMQMessage) error
 	SaveResponse(ctx context.Context, response *model.SurveyResponse) error
 	Close(ctx context.Context) error
+	CheckHealth(ctx context.Context) error
 }

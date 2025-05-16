@@ -289,3 +289,16 @@ func (c *Consumer) Close() error {
 	}
 	return nil
 }
+
+// CheckHealth verifies the RabbitMQ connection is healthy
+func (c *Consumer) CheckHealth() error {
+	if c.conn == nil || c.conn.IsClosed() {
+		return fmt.Errorf("RabbitMQ connection is closed or nil")
+	}
+
+	if c.channel == nil {
+		return fmt.Errorf("RabbitMQ channel is nil")
+	}
+
+	return nil
+}

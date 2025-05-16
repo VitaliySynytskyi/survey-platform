@@ -1,63 +1,145 @@
-# Service Discovery Implementation with Consul
+# Service Discovery з Consul у Мікросервісній Платформі для Опитувань
 
-## Implemented Components
+Цей документ описує інтеграцію Service Discovery за допомогою Consul у нашій мікросервісній платформі для проведення соціологічних опитувань.
 
-1. **Consul Setup in Docker Compose**
-   - Added Consul service to docker-compose.yml
-   - Set up proper health checks and networking
-   - Made other services dependent on Consul
+## Загальний огляд
 
-2. **Consul Client Package**
-   - Created a reusable Consul client package in `backend/pkg/consul`
-   - Implemented service registration and discovery methods
-   - Added appropriate error handling and logging
+У нашій мікросервісній архітектурі ми використовуємо Consul для виявлення сервісів (Service Discovery). Це дозволяє мікросервісам динамічно знаходити один одного без жорстко прописаних адрес, що спрощує масштабування та підвищує стійкість системи.
 
-3. **API Gateway Integration**
-   - Updated configuration to support Consul
-   - Created discovery service to get service URLs dynamically
-   - Modified proxy router to use service discovery
+## Реалізовані компоненти:
 
-4. **Auth Service Integration**
-   - Added health check endpoint that verifies database connectivity
-   - Updated main.go to register with Consul on startup
-   - Added deregistration on shutdown
-   - Created unit tests for health check
+1. **Health Check ендпоінти** у кожному мікросервісі:
+   - `/health` ендпоінт перевіряє підключення до баз даних (PostgreSQL або MongoDB) та інших критичних залежностей
+   - Повертає стандартизований JSON-відповідь зі статусом сервісу та його залежностей
 
-## Next Steps for Remaining Services
+2. **Реєстрація сервісів у Consul**:
+   - Кожен мікросервіс реєструється в Consul при запуску
+   - Генерується унікальний ID для кожного екземпляра сервісу
+   - Сервіс дереєструється з Consul при коректному завершенні роботи
 
-For each of the following services, these steps should be implemented:
+3. **API Gateway взаємодія з Consul**:
+   - API Gateway використовує Consul для динамічного виявлення сервісів
+   - Circuit Breaker на рівні API Gateway обробляє ситуації, коли сервіси недоступні
 
-1. **User Service, Survey Service, Survey Taking Service, Response Processor Service, Analytics Service**
-   - Add health check endpoint similar to auth_service
-   - Modify main.go to register with Consul
-   - Add deregistration on shutdown
-   - Ensure proper error handling if Consul is unavailable
-   - Add unit tests for health checks
+4. **Tracing через Correlation ID**:
+   - HTTP заголовок `X-Correlation-ID` використовується для відстеження запитів через мікросервіси
+   - Якщо заголовок не передано, створюється новий унікальний ID
+   - Кожен мікросервіс передає цей ID далі при викликах інших сервісів
+   - Полегшує відстеження та діагностику проблем у розподіленому середовищі
 
-2. **Testing**
-   - Test full service discovery flow with all services
-   - Verify that API Gateway can discover services dynamically
-   - Test failover scenarios when services go down and come back up
+## Технічна реалізація
 
-3. **Future Enhancements**
-   - Implement service mesh capabilities with Consul Connect
-   - Add configuration management with Consul KV store
-   - Implement distributed tracing for request flows
-   - Add metrics collection for service health monitoring
+### Консул
 
-## Service Discovery Flow
+Ми використовуємо офіційний Docker образ Consul:
 
-1. On startup, each service registers itself with Consul
-2. Registration includes service name, ID, address, port, and health check URL
-3. Consul regularly checks each service's health endpoint
-4. API Gateway discovers services through Consul rather than using hardcoded URLs
-5. When a service shuts down, it deregisters itself from Consul
-6. If a service fails health checks, Consul marks it as unavailable
+```yaml
+consul:
+  image: hashicorp/consul:1.15
+  container_name: consul
+  ports:
+    - "8500:8500"
+    - "8600:8600/udp"
+  environment:
+    - CONSUL_BIND_INTERFACE=eth0
+  command: "agent -dev -client=0.0.0.0"
+```
 
-## Benefits Achieved
+### Реєстрація сервісу в Consul
 
-- Dynamic service discovery without hardcoded URLs
-- Automatic health checking of all services
-- Support for multiple service instances (horizontal scaling)
-- Graceful handling of service outages
-- Foundation for more advanced service mesh capabilities 
+Кожен мікросервіс використовує спільний код із пакета `backend/pkg/consul/client.go` для реєстрації в Consul:
+
+```go
+// Реєстрація сервісу в Consul
+serviceID := fmt.Sprintf("%s-%s", cfg.ServiceName, uuid.New().String())
+err = consulClient.RegisterService(
+    serviceID,
+    cfg.ServiceName,
+    cfg.Server.Host,
+    cfg.Server.Port,
+    []string{},
+    fmt.Sprintf("http://%s:%s/health", cfg.Server.Host, cfg.Server.Port),
+)
+```
+
+### Health Check ендпоінт
+
+Кожен мікросервіс має ендпоінт для перевірки стану:
+
+```go
+// HealthCheckHandler обробляє запити до /health ендпоінту
+func (h *HealthHandler) HealthCheck(w http.ResponseWriter, r *http.Request) {
+    status := HealthStatus{
+        Status:      "healthy",
+        ServiceName: h.serviceName,
+    }
+
+    // Перевірка підключення до бази даних
+    if err := h.checkDatabase(r.Context()); err != nil {
+        status.Status = "unhealthy"
+        status.Database = "disconnected"
+        status.Details = err.Error()
+        w.WriteHeader(http.StatusServiceUnavailable)
+    } else {
+        status.Database = "connected"
+        w.WriteHeader(http.StatusOK)
+    }
+
+    // Відповідь у форматі JSON
+    w.Header().Set("Content-Type", "application/json")
+    json.NewEncoder(w).Encode(status)
+}
+```
+
+### Correlation ID for Distributed Tracing
+
+У пакеті `backend/pkg/tracing/correlation.go` реалізовано middleware для роботи з Correlation ID:
+
+```go
+// Middleware додає обробку Correlation ID до HTTP запитів
+func Middleware(next http.Handler) http.Handler {
+    return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+        // Отримати Correlation ID з заголовка або згенерувати новий
+        correlationID := r.Header.Get(CorrelationIDHeader)
+        if correlationID == "" {
+            correlationID = uuid.New().String()
+        }
+
+        // Додати Correlation ID до заголовка відповіді
+        w.Header().Set(CorrelationIDHeader, correlationID)
+
+        // Встановити Correlation ID в контексті запиту
+        ctx := context.WithValue(r.Context(), contextKey, correlationID)
+        r = r.WithContext(ctx)
+
+        // Викликати наступний обробник
+        next.ServeHTTP(w, r)
+    })
+}
+```
+
+## Тестування Service Discovery
+
+Для перевірки коректної роботи Service Discovery ми розробили інтеграційні тести, які перевіряють:
+
+1. Наскрізні сценарії через API Gateway
+2. Реакцію системи на недоступність окремих сервісів
+3. Відновлення після повернення сервісів у робочий стан
+
+## Подальші кроки
+
+1. **Розширене тестування відмовостійкості**:
+   - Додаткові тести для Circuit Breaker
+   - Симуляція різних сценаріїв відмов сервісів та мережі
+
+2. **Розширення Distributed Tracing**:
+   - Інтеграція з OpenTelemetry/Jaeger для повноцінного трасування
+   - Збір та аналіз трас запитів через усі сервіси
+
+3. **Покращення моніторингу**:
+   - Додавання Prometheus для збору метрик
+   - Налаштування графіків та алертів у Grafana
+
+4. **Автоматизація масштабування**:
+   - Інтеграція з Kubernetes для автоматичного масштабування
+   - Використання Consul для балансування навантаження між екземплярами сервісів 

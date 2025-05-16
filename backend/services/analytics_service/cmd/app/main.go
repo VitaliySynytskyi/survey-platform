@@ -2,6 +2,7 @@ package main
 
 import (
 	"context"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
@@ -9,10 +10,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/VitaliySynytskyi/survey-platform/backend/pkg/consul"
 	"github.com/VitaliySynytskyi/survey-platform/backend/services/analytics_service/internal/api"
 	"github.com/VitaliySynytskyi/survey-platform/backend/services/analytics_service/internal/config"
 	"github.com/VitaliySynytskyi/survey-platform/backend/services/analytics_service/internal/db"
 	"github.com/VitaliySynytskyi/survey-platform/backend/services/analytics_service/internal/service"
+	"github.com/google/uuid"
 )
 
 func main() {
@@ -43,6 +46,46 @@ func main() {
 	server := &http.Server{
 		Addr:    ":" + cfg.Server.Port,
 		Handler: router,
+	}
+
+	// Initialize Consul client
+	var consulClient *consul.Client
+	if consulAddr := os.Getenv("CONSUL_ADDR"); consulAddr != "" {
+		var err error
+		consulClient, err = consul.NewClient(consulAddr)
+		if err != nil {
+			log.Printf("Warning: Failed to create Consul client: %v", err)
+		} else {
+			// Register service with Consul
+			serviceID := fmt.Sprintf("analytics-service-%s", uuid.New().String())
+			serviceName := os.Getenv("SERVICE_NAME")
+			if serviceName == "" {
+				serviceName = "analytics_service"
+			}
+
+			err = consulClient.RegisterService(
+				serviceID,
+				"analytics-service",
+				serviceName,
+				8086, // Analytics service port
+				[]string{"v1", "analytics"},
+				fmt.Sprintf("http://%s:8086/health", serviceName),
+			)
+			if err != nil {
+				log.Printf("Warning: Failed to register service with Consul: %v", err)
+			} else {
+				log.Println("Successfully registered service with Consul")
+
+				// Set up deregistration on shutdown
+				defer func() {
+					if err := consulClient.DeregisterService(serviceID); err != nil {
+						log.Printf("Warning: Failed to deregister service: %v", err)
+					} else {
+						log.Println("Successfully deregistered service from Consul")
+					}
+				}()
+			}
+		}
 	}
 
 	// Start server in a goroutine

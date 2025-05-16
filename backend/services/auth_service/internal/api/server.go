@@ -2,6 +2,7 @@ package api
 
 import (
 	"context"
+	"encoding/json"
 	"log"
 	"net/http"
 	"os"
@@ -26,6 +27,14 @@ type Server struct {
 	userStore    store.UserStore
 	tokenManager *auth.TokenManager
 	httpServer   *http.Server
+}
+
+// HealthStatus represents the status of the service and its dependencies
+type HealthStatus struct {
+	Status      string `json:"status"`
+	Database    string `json:"database,omitempty"`
+	Details     string `json:"details,omitempty"`
+	ServiceName string `json:"service_name"`
 }
 
 // NewServer creates a new server with all dependencies
@@ -88,7 +97,7 @@ func (s *Server) SetupRoutes() http.Handler {
 
 	// CORS configuration
 	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"*"}, // In production, you should specify actual origins
+		AllowedOrigins:   []string{"http://localhost:80", "http://localhost:3000"},
 		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
 		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
 		AllowCredentials: true,
@@ -117,17 +126,26 @@ func (s *Server) healthCheckHandler(w http.ResponseWriter, r *http.Request) {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	status := HealthStatus{
+		Status:      "healthy",
+		ServiceName: "auth_service",
+	}
+
 	// Check database connection
 	if err := s.userStore.Ping(ctx); err != nil {
 		log.Printf("Health check failed: database connection error: %v", err)
+		status.Status = "unhealthy"
+		status.Database = "disconnected"
+		status.Details = err.Error()
 		w.WriteHeader(http.StatusServiceUnavailable)
-		w.Write([]byte("Service Unhealthy: database connection error"))
-		return
+	} else {
+		status.Database = "connected"
+		w.WriteHeader(http.StatusOK)
 	}
 
-	// Service is healthy
-	w.WriteHeader(http.StatusOK)
-	w.Write([]byte("Service Healthy"))
+	// Return JSON response
+	w.Header().Set("Content-Type", "application/json")
+	json.NewEncoder(w).Encode(status)
 }
 
 // Start starts the HTTP server

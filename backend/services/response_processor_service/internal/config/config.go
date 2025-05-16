@@ -9,6 +9,7 @@ import (
 type Config struct {
 	RabbitMQ RabbitMQConfig
 	MongoDB  MongoDBConfig
+	Server   ServerConfig
 }
 
 // RabbitMQConfig holds the configuration for RabbitMQ
@@ -30,6 +31,11 @@ type MongoDBConfig struct {
 	Collection string
 }
 
+// ServerConfig holds the configuration for the HTTP server
+type ServerConfig struct {
+	Port string
+}
+
 // Load loads the configuration from environment variables
 func Load() *Config {
 	return &Config{
@@ -47,6 +53,9 @@ func Load() *Config {
 			URI:        getEnv("MONGODB_URI", "mongodb://localhost:27017"),
 			Database:   getEnv("MONGODB_DATABASE", "survey_platform"),
 			Collection: getEnv("MONGODB_COLLECTION", "responses"),
+		},
+		Server: ServerConfig{
+			Port: getEnv("PORT", "8085"),
 		},
 	}
 }
