@@ -1,0 +1,50 @@
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: survey-platform-config
+  labels:
+    app: survey-platform
+data:
+  ENVIRONMENT: "production"
+  
+  # Database Configuration
+  POSTGRES_HOST: "postgres"
+  POSTGRES_PORT: "5432"
+  POSTGRES_DB: "survey_platform"
+  
+  # MongoDB Configuration
+  MONGO_HOST: "mongodb"
+  MONGO_PORT: "27017"
+  MONGO_DB: "survey_db"
+  MONGO_RESULTS_DB: "survey_results"
+  
+  # RabbitMQ Configuration
+  RABBITMQ_HOST: "rabbitmq"
+  RABBITMQ_PORT: "5672"
+  RABBITMQ_EXCHANGE: "survey_responses"
+  RABBITMQ_QUEUE: "response_queue"
+  RABBITMQ_ROUTING_KEY: "response.new"
+  RABBITMQ_PREFETCH_COUNT: "10"
+  
+  # Consul Configuration
+  CONSUL_ADDR: "consul:8500"
+  CONSUL_ENABLED: "true"
+  USE_CONSUL_FOR_SD: "true"
+  
+  # Service URLs (for API Gateway if not using Consul)
+  AUTH_SERVICE_URL: "http://auth-service:8080"
+  USER_SERVICE_URL: "http://user-service:8081"
+  SURVEY_SERVICE_URL: "http://survey-service:8082"
+  SURVEY_TAKING_SERVICE_URL: "http://survey-taking-service:8083"
+  ANALYTICS_SERVICE_URL: "http://analytics-service:8084"
+  
+  # Service Names
+  AUTH_SERVICE_NAME: "auth-service"
+  USER_SERVICE_NAME: "user-service"
+  SURVEY_SERVICE_NAME: "survey-service"
+  SURVEY_TAKING_SERVICE_NAME: "survey-taking-service"
+  RESPONSE_PROCESSOR_SERVICE_NAME: "response-processor-service"
+  ANALYTICS_SERVICE_NAME: "analytics-service"
+  
+  # Frontend Configuration
+  API_URL: "http://api-gateway:8000" 

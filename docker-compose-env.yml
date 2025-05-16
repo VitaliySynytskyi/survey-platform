@@ -1,0 +1,352 @@
+version: '3.8'
+
+services:
+  # Consul service for Service Discovery
+  consul:
+    image: hashicorp/consul:1.15
+    container_name: consul
+    ports:
+      - "${CONSUL_PORT}:8500"  # UI and API
+      - "8600:8600/udp"  # DNS interface
+    volumes:
+      - consul_data:/consul/data
+    environment:
+      - CONSUL_BIND_INTERFACE=eth0
+      - CONSUL_LOCAL_CONFIG={"datacenter":"dc1"}
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "consul", "members"]
+      interval: 10s
+      timeout: 5s
+      retries: 3
+
+  # PostgreSQL service
+  postgres:
+    image: postgres:15-alpine
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+    ports:
+      - "${POSTGRES_PORT}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER} -d ${POSTGRES_DB}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # MongoDB service
+  mongodb:
+    image: mongo:6
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: ${MONGO_USER}
+      MONGO_INITDB_ROOT_PASSWORD: ${MONGO_PASSWORD}
+    ports:
+      - "${MONGO_PORT}:27017"
+    volumes:
+      - mongodb_data:/data/db
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # RabbitMQ service
+  rabbitmq:
+    image: rabbitmq:3-management-alpine
+    environment:
+      RABBITMQ_DEFAULT_USER: ${RABBITMQ_USER}
+      RABBITMQ_DEFAULT_PASS: ${RABBITMQ_PASSWORD}
+    ports:
+      - "${RABBITMQ_PORT}:5672"   # AMQP protocol port
+      - "${RABBITMQ_MANAGEMENT_PORT}:15672" # Management UI port
+    volumes:
+      - rabbitmq_data:/var/lib/rabbitmq
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "rabbitmq-diagnostics", "ping"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+
+  # Authentication Service
+  auth_service:
+    build:
+      context: ./backend/services/auth_service
+      dockerfile: Dockerfile
+      args:
+        - ENVIRONMENT=${ENVIRONMENT}
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
+      JWT_SECRET: ${JWT_SECRET}
+      CONSUL_ADDR: consul:8500
+      SERVICE_NAME: auth_service
+      ENVIRONMENT: ${ENVIRONMENT}
+    ports:
+      - "${AUTH_SERVICE_PORT}:8080"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # User Service
+  user_service:
+    build:
+      context: ./backend/services/user_service
+      dockerfile: Dockerfile
+      args:
+        - ENVIRONMENT=${ENVIRONMENT}
+    environment:
+      DB_HOST: postgres
+      DB_PORT: 5432
+      DB_USER: ${POSTGRES_USER}
+      DB_PASSWORD: ${POSTGRES_PASSWORD}
+      DB_NAME: ${POSTGRES_DB}
+      CONSUL_ADDR: consul:8500
+      SERVICE_NAME: user_service
+      ENVIRONMENT: ${ENVIRONMENT}
+    ports:
+      - "${USER_SERVICE_PORT}:8081"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8081/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Survey Service
+  survey_service:
+    build:
+      context: ./backend/services/survey_service
+      dockerfile: Dockerfile
+      args:
+        - ENVIRONMENT=${ENVIRONMENT}
+    environment:
+      POSTGRES_HOST: postgres
+      POSTGRES_PORT: 5432
+      POSTGRES_USER: ${POSTGRES_USER}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD}
+      POSTGRES_DB: ${POSTGRES_DB}
+      MONGO_HOST: mongodb
+      MONGO_PORT: 27017
+      MONGO_USER: ${MONGO_USER}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_DB: survey_db
+      CONSUL_ADDR: consul:8500
+      SERVICE_NAME: survey_service
+      ENVIRONMENT: ${ENVIRONMENT}
+    ports:
+      - "${SURVEY_SERVICE_PORT}:8082"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      mongodb:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8082/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Survey Taking Service
+  survey_taking_service:
+    build:
+      context: ./backend/services/survey_taking_service
+      dockerfile: Dockerfile
+      args:
+        - ENVIRONMENT=${ENVIRONMENT}
+    environment:
+      MONGO_HOST: mongodb
+      MONGO_PORT: 27017
+      MONGO_USER: ${MONGO_USER}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_DB: survey_db
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ_EXCHANGE: survey_responses
+      RABBITMQ_QUEUE: response_queue
+      RABBITMQ_ROUTING_KEY: response.new
+      CONSUL_ADDR: consul:8500
+      SERVICE_NAME: survey_taking_service
+      ENVIRONMENT: ${ENVIRONMENT}
+    ports:
+      - "${SURVEY_TAKING_SERVICE_PORT}:8083"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Response Processor Service
+  response_processor_service:
+    build:
+      context: ./backend/services/response_processor_service
+      dockerfile: Dockerfile
+      args:
+        - ENVIRONMENT=${ENVIRONMENT}
+    environment:
+      MONGO_HOST: mongodb
+      MONGO_PORT: 27017
+      MONGO_USER: ${MONGO_USER}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_DB: survey_results
+      RABBITMQ_HOST: rabbitmq
+      RABBITMQ_PORT: 5672
+      RABBITMQ_USER: ${RABBITMQ_USER}
+      RABBITMQ_PASSWORD: ${RABBITMQ_PASSWORD}
+      RABBITMQ_EXCHANGE: survey_responses
+      RABBITMQ_QUEUE: response_queue
+      RABBITMQ_ROUTING_KEY: response.new
+      RABBITMQ_PREFETCH_COUNT: 10
+      CONSUL_ADDR: consul:8500
+      SERVICE_NAME: response_processor_service
+      ENVIRONMENT: ${ENVIRONMENT}
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      rabbitmq:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8085/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Analytics Service
+  analytics_service:
+    build:
+      context: ./backend/services/analytics_service
+      dockerfile: Dockerfile
+      args:
+        - ENVIRONMENT=${ENVIRONMENT}
+    environment:
+      MONGO_HOST: mongodb
+      MONGO_PORT: 27017
+      MONGO_USER: ${MONGO_USER}
+      MONGO_PASSWORD: ${MONGO_PASSWORD}
+      MONGO_DB: survey_results
+      CONSUL_ADDR: consul:8500
+      SERVICE_NAME: analytics_service
+      ENVIRONMENT: ${ENVIRONMENT}
+    ports:
+      - "${ANALYTICS_SERVICE_PORT}:8084"
+    depends_on:
+      mongodb:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8084/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # API Gateway
+  api_gateway:
+    build:
+      context: ./backend/api_gateway
+      dockerfile: Dockerfile
+      args:
+        - ENVIRONMENT=${ENVIRONMENT}
+    environment:
+      AUTH_SERVICE_URL: http://auth_service:8080
+      USER_SERVICE_URL: http://user_service:8081
+      SURVEY_SERVICE_URL: http://survey_service:8082
+      SURVEY_TAKING_SERVICE_URL: http://survey_taking_service:8083
+      ANALYTICS_SERVICE_URL: http://analytics_service:8084
+      CONSUL_ADDR: consul:8500
+      CONSUL_ENABLED: "true"
+      USE_CONSUL_FOR_SD: "true"
+      ENVIRONMENT: ${ENVIRONMENT}
+    ports:
+      - "${API_GATEWAY_PORT}:8000"
+    depends_on:
+      auth_service:
+        condition: service_healthy
+      user_service:
+        condition: service_healthy
+      survey_service:
+        condition: service_healthy
+      survey_taking_service:
+        condition: service_healthy
+      analytics_service:
+        condition: service_healthy
+      consul:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+  # Frontend
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        - API_URL=http://localhost:${API_GATEWAY_PORT}
+        - ENVIRONMENT=${ENVIRONMENT}
+    ports:
+      - "${FRONTEND_PORT}:80"
+    depends_on:
+      api_gateway:
+        condition: service_healthy
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:80"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+
+volumes:
+  postgres_data:
+  mongodb_data:
+  rabbitmq_data:
+  consul_data: 

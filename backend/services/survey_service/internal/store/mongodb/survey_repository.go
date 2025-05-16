@@ -3,6 +3,8 @@ package mongodb
 import (
 	"context"
 	"errors"
+	"fmt"
+	"regexp"
 	"time"
 
 	"github.com/VitaliySynytskyi/microservices-survey-app/backend/services/survey_service/internal/domain/models"
@@ -15,6 +17,12 @@ import (
 const (
 	// CollectionName ім'я колекції в MongoDB
 	CollectionName = "surveys"
+)
+
+var (
+	ErrInvalidID    = errors.New("invalid object ID format")
+	ErrNotFound     = errors.New("survey not found")
+	validObjectIDRx = regexp.MustCompile("^[0-9a-fA-F]{24}$")
 )
 
 // Repository інтерфейс репозиторію опитувань
@@ -49,6 +57,14 @@ func NewSurveyRepository(db *mongo.Database) Repository {
 	}
 }
 
+// Функція-помічник для валідації ID перед конвертацією в ObjectID
+func validateObjectID(id string) error {
+	if !validObjectIDRx.MatchString(id) {
+		return ErrInvalidID
+	}
+	return nil
+}
+
 // Create створює нове опитування
 func (r *SurveyRepository) Create(ctx context.Context, survey *models.Survey) error {
 	// Встановлення часу створення та оновлення
@@ -66,7 +82,7 @@ func (r *SurveyRepository) Create(ctx context.Context, survey *models.Survey) er
 	// Вставка документа
 	result, err := r.collection.InsertOne(ctx, survey)
 	if err != nil {
-		return err
+		return fmt.Errorf("failed to create survey: %w", err)
 	}
 
 	// Присвоєння ID створеному опитуванню
@@ -76,53 +92,39 @@ func (r *SurveyRepository) Create(ctx context.Context, survey *models.Survey) er
 
 // GetByID отримує опитування за ID
 func (r *SurveyRepository) GetByID(ctx context.Context, id string) (*models.Survey, error) {
-	objectID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	// Валідуємо ID перед конвертацією
+	if err := validateObjectID(id); err != nil {
 		return nil, err
 	}
 
+	objID, err := primitive.ObjectIDFromHex(id)
+	if err != nil {
+		return nil, fmt.Errorf("failed to parse object ID: %w", err)
+	}
+
 	var survey models.Survey
-	err = r.collection.FindOne(ctx, bson.M{"_id": objectID}).Decode(&survey)
+	err = r.collection.FindOne(ctx, bson.M{"_id": objID}).Decode(&survey)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
-			return nil, errors.New("survey not found")
+			return nil, ErrNotFound
 		}
-		return nil, err
+		return nil, fmt.Errorf("failed to get survey: %w", err)
 	}
 
 	return &survey, nil
 }
 
-// Update оновлює опитування
-func (r *SurveyRepository) Update(ctx context.Context, survey *models.Survey) error {
-	// Встановлення часу оновлення
-	survey.UpdatedAt = time.Now()
-
-	// Генерація ID для нових питань
-	for i := range survey.Questions {
-		if survey.Questions[i].ID == "" {
-			survey.Questions[i].ID = primitive.NewObjectID().Hex()
-		}
-	}
-
-	// Оновлення документа
-	_, err := r.collection.ReplaceOne(
-		ctx,
-		bson.M{"_id": survey.ID},
-		survey,
-	)
-	return err
+// Update оновлює опитуванняfunc (r *SurveyRepository) Update(ctx context.Context, survey *models.Survey) error {	// Встановлення часу оновлення	survey.UpdatedAt = time.Now()	// Генерація ID для нових питань	for i := range survey.Questions {		if survey.Questions[i].ID == "" {			survey.Questions[i].ID = primitive.NewObjectID().Hex()		}	}	// Оновлення документа	result, err := r.collection.ReplaceOne(		ctx,		bson.M{"_id": survey.ID},		survey,	)	if err != nil {		return fmt.Errorf("failed to update survey: %w", err)	}	if result.MatchedCount == 0 {		return ErrNotFound	}	return nil
 }
 
 // Delete видаляє опитування за ID
 func (r *SurveyRepository) Delete(ctx context.Context, id string) error {
-	objectID, err := primitive.ObjectIDFromHex(id)
-	if err != nil {
+	// Валідуємо ID перед конвертацією
+	if err := validateObjectID(id); err != nil {
 		return err
 	}
 
-	_, err = r.collection.DeleteOne(ctx, bson.M{"_id": objectID})
-	return err
+		objID, err := primitive.ObjectIDFromHex(id)	if err != nil {		return fmt.Errorf("failed to parse object ID: %w", err)	}	result, err := r.collection.DeleteOne(ctx, bson.M{"_id": objID})	if err != nil {		return fmt.Errorf("failed to delete survey: %w", err)	}	if result.DeletedCount == 0 {		return ErrNotFound	}	return nil
 }
 
 // GetByOwnerID отримує список опитувань за ID власника з пагінацією

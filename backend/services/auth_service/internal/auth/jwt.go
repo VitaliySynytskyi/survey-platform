@@ -14,6 +14,7 @@ import (
 var (
 	ErrInvalidToken = errors.New("invalid token")
 	ErrExpiredToken = errors.New("token has expired")
+	ErrRevokedToken = errors.New("token has been revoked")
 )
 
 // Claims represents the JWT claims
@@ -38,6 +39,7 @@ type TokenManager struct {
 	secretKey     string
 	accessExpiry  time.Duration
 	refreshExpiry time.Duration
+	blacklist     *TokenBlacklist
 }
 
 // NewTokenManager creates a new token manager
@@ -46,6 +48,7 @@ func NewTokenManager(secretKey string, accessExpiry, refreshExpiry time.Duration
 		secretKey:     secretKey,
 		accessExpiry:  accessExpiry,
 		refreshExpiry: refreshExpiry,
+		blacklist:     NewTokenBlacklist(),
 	}
 }
 
@@ -103,6 +106,11 @@ func (tm *TokenManager) generateToken(user *domain.User, tokenType TokenType, ex
 
 // ValidateToken validates the provided token and returns the claims
 func (tm *TokenManager) ValidateToken(tokenString string, tokenType TokenType) (*Claims, error) {
+	// Перевіряємо, чи токен не в чорному списку
+	if tm.blacklist.Contains(tokenString) {
+		return nil, ErrRevokedToken
+	}
+
 	// Parse the token
 	token, err := jwt.ParseWithClaims(tokenString, &Claims{}, func(token *jwt.Token) (interface{}, error) {
 		// Validate the signing method
@@ -164,6 +172,19 @@ func (tm *TokenManager) RefreshTokens(refreshTokenString string) (*domain.TokenR
 		return nil, err
 	}
 
+	// Додавання старого refresh токена до чорного списку
+	// Використовуємо refreshExpiry, щоб токен був у чорному списку до кінця його терміну дії
+	tm.blacklist.Add(refreshTokenString, tm.refreshExpiry)
+
 	// Generate new token pair
 	return tm.GenerateTokenPair(user)
+}
+
+// RevokeTokens додає access і refresh токени до чорного списку
+// Викликається при виході користувача з системи (logout)
+func (tm *TokenManager) RevokeTokens(accessToken, refreshToken string) {
+	// Додаємо токени до чорного списку
+	// Використовуємо відповідні терміни дії
+	tm.blacklist.Add(accessToken, tm.accessExpiry)
+	tm.blacklist.Add(refreshToken, tm.refreshExpiry)
 }
