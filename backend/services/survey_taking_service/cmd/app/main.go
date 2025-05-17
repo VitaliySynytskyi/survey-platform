@@ -59,13 +59,35 @@ func main() {
 	// Add CORS middleware
 	router.Use(func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Access-Control-Allow-Origin", "http://localhost:80, http://localhost:3000")
+			// Get Origin header from request
+			origin := r.Header.Get("Origin")
+
+			// Allow specific origins
+			allowedOrigins := []string{"http://localhost", "http://localhost:80", "http://localhost:3000"}
+
+			// Check if the request's origin is in our allowed list
+			allowOrigin := "" // Default empty
+			for _, allowed := range allowedOrigins {
+				if origin == allowed {
+					allowOrigin = origin
+					break
+				}
+			}
+
+			// Set CORS headers with the single correct origin
+			if allowOrigin != "" {
+				w.Header().Set("Access-Control-Allow-Origin", allowOrigin)
+			}
 			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Accept, Content-Type, Content-Length, Accept-Encoding, Authorization")
+			w.Header().Set("Access-Control-Allow-Credentials", "true")
+
+			// Handle preflight requests
 			if r.Method == "OPTIONS" {
 				w.WriteHeader(http.StatusOK)
 				return
 			}
+
 			next.ServeHTTP(w, r)
 		})
 	})
@@ -89,7 +111,9 @@ func main() {
 			serviceID = fmt.Sprintf("%s-%s", cfg.ServiceName, uuid.New().String())
 
 			// Register service with Consul
-			serviceAddress := cfg.Server.Host
+			// Use the service name as the address since we're in a Docker container
+			// This will be the DNS name in the Docker network
+			serviceAddress := cfg.ServiceName
 			servicePort, _ := strconv.Atoi(cfg.Server.Port)
 			healthCheckURL := fmt.Sprintf("http://%s:%s/health", serviceAddress, cfg.Server.Port)
 

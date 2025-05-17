@@ -57,9 +57,9 @@ func LoadConfig() (*Config, error) {
 	mongoDatabase := getEnv("MONGO_DATABASE", "survey_service")
 
 	// Конфігурація автентифікації
-	jwtSecret := getEnv("JWT_SECRET", "")
+	jwtSecret := getEnv("JWT_SECRET_KEY", "")
 	if jwtSecret == "" {
-		return nil, fmt.Errorf("JWT_SECRET is required")
+		return nil, fmt.Errorf("JWT_SECRET_KEY is required")
 	}
 
 	// Конфігурація Consul

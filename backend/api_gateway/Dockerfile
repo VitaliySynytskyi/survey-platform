@@ -4,17 +4,22 @@ FROM golang:1.22-alpine AS builder
 # Set working directory
 WORKDIR /app
 
-# Copy go.mod and go.sum files
-COPY go.mod ./
+# Copy common packages first
+COPY pkg/ /app/pkg/
+
+# Copy the API gateway code
+COPY api_gateway/ /app/api_gateway/
+
+WORKDIR /app/api_gateway
 
 # Download dependencies
 RUN go mod download
-
-# Copy source code
-COPY . .
+RUN go get github.com/google/uuid
+RUN go get github.com/hashicorp/consul/api@v1.24.0
+RUN go get -d ./...
 
 # Build the application
-RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/server/main.go
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /app/main ./cmd/app/main.go
 
 # Final stage
 FROM alpine:3.18

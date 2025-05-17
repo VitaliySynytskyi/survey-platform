@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 	"time"
 
@@ -69,13 +70,16 @@ func main() {
 				serviceName = "analytics_service"
 			}
 
+			port, _ := strconv.Atoi(cfg.Server.Port)
+			healthCheckURL := fmt.Sprintf("http://%s:%s/health", serviceName, cfg.Server.Port)
+
 			err = consulClient.RegisterService(
 				serviceID,
-				"analytics-service",
 				serviceName,
-				8086, // Analytics service port
+				serviceName, // Using service name as address in Docker
+				port,
 				[]string{"v1", "analytics"},
-				fmt.Sprintf("http://%s:8086/health", serviceName),
+				healthCheckURL,
 			)
 			if err != nil {
 				log.Printf("Warning: Failed to register service with Consul: %v", err)

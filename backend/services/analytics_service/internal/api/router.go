@@ -13,6 +13,14 @@ import (
 	"github.com/VitaliySynytskyi/survey-platform/backend/services/analytics_service/internal/db"
 )
 
+// HealthStatus represents the health status of the service
+type HealthStatus struct {
+	Status       string            `json:"status"`
+	ServiceName  string            `json:"service_name"`
+	Dependencies map[string]string `json:"dependencies,omitempty"`
+	Details      string            `json:"details,omitempty"`
+}
+
 // SetupRouter sets up the router
 func SetupRouter(handler *Handler, cfg config.Auth) *chi.Mux {
 	r := chi.NewRouter()
@@ -57,24 +65,37 @@ func SetupRouter(handler *Handler, cfg config.Auth) *chi.Mux {
 
 // healthCheckHandler handles the health check endpoint
 func healthCheckHandler(w http.ResponseWriter, r *http.Request) {
-	// Check MongoDB connection
-	repo, err := db.NewAnalyticsRepository(config.Load().MongoDB)
-	if err != nil {
-		w.Header().Set("Content-Type", "application/json")
-		w.WriteHeader(http.StatusServiceUnavailable)
-		json.NewEncoder(w).Encode(map[string]string{
-			"status":  "error",
-			"message": "MongoDB connection failed: " + err.Error(),
-		})
-		return
-	}
-	defer repo.Close(r.Context())
+	cfg := config.Load()
+	healthy := true
+	var details string
 
-	// All checks passed
+	status := HealthStatus{
+		Status:       "healthy",
+		ServiceName:  "analytics_service",
+		Dependencies: make(map[string]string),
+	}
+
+	// Check MongoDB connection
+	repo, err := db.NewAnalyticsRepository(cfg.MongoDB)
+	if err != nil {
+		healthy = false
+		details += "MongoDB: " + err.Error() + "; "
+		status.Dependencies["mongodb"] = "disconnected"
+	} else {
+		status.Dependencies["mongodb"] = "connected"
+		defer repo.Close(r.Context())
+	}
+
+	// Set status based on health check results
+	if !healthy {
+		status.Status = "unhealthy"
+		status.Details = details
+		w.WriteHeader(http.StatusServiceUnavailable)
+	} else {
+		w.WriteHeader(http.StatusOK)
+	}
+
+	// Send response
 	w.Header().Set("Content-Type", "application/json")
-	w.WriteHeader(http.StatusOK)
-	json.NewEncoder(w).Encode(map[string]string{
-		"status":  "ok",
-		"service": "analytics_service",
-	})
+	json.NewEncoder(w).Encode(status)
 }

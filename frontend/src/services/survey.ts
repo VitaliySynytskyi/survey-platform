@@ -132,7 +132,7 @@ const surveyService = {
     startDate?: string, 
     endDate?: string
   ): Promise<IndividualResponsesResult> {
-    let url = `/surveys/${surveyId}/responses?page=${page}&limit=${limit}`
+    let url = `/analytics/surveys/${surveyId}/responses?page=${page}&limit=${limit}`
     
     if (startDate) {
       url += `&startDate=${encodeURIComponent(startDate)}`

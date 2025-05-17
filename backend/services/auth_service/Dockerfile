@@ -1,36 +1,34 @@
-# Build stage
-FROM golang:1.22-alpine AS builder
+# --- Build stage ---
+FROM golang:1.23-alpine AS builder
 
-# Set working directory that matches go module path
-WORKDIR /src/github.com/VitaliySynytskyi/survey-platform
-
-# Copy the entire project
-COPY . .
-
-# Download dependencies
-RUN cd backend/services/auth_service && go mod download
-
-# Build the application
-RUN cd backend/services/auth_service && CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o main ./cmd/server/main.go
-
-# Final stage
-FROM alpine:3.18
-
-# Install necessary packages
-RUN apk --no-cache add ca-certificates tzdata
-
-# Set working directory
 WORKDIR /app
 
-# Copy the binary from builder
-COPY --from=builder /src/github.com/VitaliySynytskyi/survey-platform/backend/services/auth_service/main .
+# Copy common packages first
+COPY pkg/ /app/pkg/
 
-# Create non-root user
+# Copy the service code
+COPY services/auth_service/ /app/services/auth_service/
+
+WORKDIR /app/services/auth_service
+
+# Download dependencies
+RUN go mod download
+
+# Build the application
+RUN CGO_ENABLED=0 GOOS=linux go build -a -installsuffix cgo -o /app/main ./cmd/server/main.go
+
+# --- Final stage ---
+FROM alpine:3.18
+
+RUN apk --no-cache add ca-certificates tzdata
+
+WORKDIR /app
+
+COPY --from=builder /app/main .
+
+EXPOSE 8080
+
 RUN adduser -D -g '' appuser
 USER appuser
 
-# Expose application port
-EXPOSE 8080
-
-# Command to run the application
 CMD ["./main"]

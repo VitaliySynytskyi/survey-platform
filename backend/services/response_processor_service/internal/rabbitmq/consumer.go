@@ -222,11 +222,13 @@ func validateMessage(message *model.RabbitMQMessage) error {
 			return fmt.Errorf("answer at index %d is missing question_id", i)
 		}
 
-		// Check if QuestionID is a valid ObjectID
-		_, err := primitive.ObjectIDFromHex(answer.QuestionID)
-		if err != nil {
-			return fmt.Errorf("invalid question_id format for answer at index %d: %w", i, err)
-		}
+		// Temporarily commented out to allow non-ObjectID question_ids
+		/*
+			_, err := primitive.ObjectIDFromHex(answer.QuestionID)
+			if err != nil {
+				return fmt.Errorf("invalid question_id format for answer at index %d: %w", i, err)
+			}
+		*/
 
 		if answer.Value == nil {
 			return fmt.Errorf("answer at index %d is missing value", i)

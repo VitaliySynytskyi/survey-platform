@@ -1,3 +1,9 @@
-module github.com/VitaliySynytskyi/survey-platform/backend/pkg/consul
+module github.com/VitaliySynytskyi/survey-platform
 
-go 1.24.3
+go 1.20
+
+require (
+	github.com/google/uuid v1.3.0
+	github.com/hashicorp/consul/api v1.24.0
+	github.com/joho/godotenv v1.5.1
+)

@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"regexp"
 	"time"
 
@@ -32,6 +33,7 @@ type Repository interface {
 	Update(ctx context.Context, survey *models.Survey) error
 	Delete(ctx context.Context, id string) error
 	GetByOwnerID(ctx context.Context, ownerID string, page, perPage int64) ([]models.Survey, int64, error)
+	GetAll(ctx context.Context, page, perPage int64) ([]models.Survey, int64, error)
 }
 
 // SurveyRepository реалізація репозиторію опитувань
@@ -92,25 +94,33 @@ func (r *SurveyRepository) Create(ctx context.Context, survey *models.Survey) er
 
 // GetByID отримує опитування за ID
 func (r *SurveyRepository) GetByID(ctx context.Context, id string) (*models.Survey, error) {
+	log.Printf("SURVEY_REPOSITORY: GetByID called with id: %s", id)
 	// Валідуємо ID перед конвертацією
 	if err := validateObjectID(id); err != nil {
+		log.Printf("SURVEY_REPOSITORY: GetByID error: Invalid ObjectID format for id %s: %v", id, err)
 		return nil, err
 	}
 
 	objID, err := primitive.ObjectIDFromHex(id)
 	if err != nil {
+		// This case should ideally be caught by validateObjectID, but good to have a log here too.
+		log.Printf("SURVEY_REPOSITORY: GetByID error: Failed to parse ObjectID from hex for id %s: %v", id, err)
 		return nil, fmt.Errorf("failed to parse object ID: %w", err)
 	}
 
 	var survey models.Survey
+	log.Printf("SURVEY_REPOSITORY: GetByID attempting to find survey with _id: %s in collection %s", objID.Hex(), r.collection.Name())
 	err = r.collection.FindOne(ctx, bson.M{"_id": objID}).Decode(&survey)
 	if err != nil {
 		if errors.Is(err, mongo.ErrNoDocuments) {
+			log.Printf("SURVEY_REPOSITORY: GetByID: Survey not found for _id %s. MongoDB error: %v", objID.Hex(), err)
 			return nil, ErrNotFound
 		}
+		log.Printf("SURVEY_REPOSITORY: GetByID error: Failed to get survey for _id %s. MongoDB error: %v", objID.Hex(), err)
 		return nil, fmt.Errorf("failed to get survey: %w", err)
 	}
 
+	log.Printf("SURVEY_REPOSITORY: GetByID: Successfully found survey with _id %s, Title: %s", survey.ID.Hex(), survey.Title)
 	return &survey, nil
 }
 
@@ -192,6 +202,40 @@ func (r *SurveyRepository) GetByOwnerID(ctx context.Context, ownerID string, pag
 	total, err := r.collection.CountDocuments(ctx, bson.M{"owner_id": ownerID})
 	if err != nil {
 		return nil, 0, err
+	}
+
+	return surveys, total, nil
+}
+
+// GetAll отримує список всіх опитувань з пагінацією
+func (r *SurveyRepository) GetAll(ctx context.Context, page, perPage int64) ([]models.Survey, int64, error) {
+	// Параметри пагінації
+	skip := (page - 1) * perPage
+	limit := perPage
+
+	// Опції пошуку
+	findOptions := options.Find().
+		SetSkip(skip).
+		SetLimit(limit).
+		SetSort(bson.D{{Key: "created_at", Value: -1}}) // Сортування за замовчуванням
+
+	// Запит
+	cursor, err := r.collection.Find(ctx, bson.M{}, findOptions) // bson.M{} для всіх документів
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to find surveys: %w", err)
+	}
+	defer cursor.Close(ctx)
+
+	// Декодування результатів
+	var surveys []models.Survey
+	if err = cursor.All(ctx, &surveys); err != nil {
+		return nil, 0, fmt.Errorf("failed to decode surveys: %w", err)
+	}
+
+	// Отримання загальної кількості
+	total, err := r.collection.CountDocuments(ctx, bson.M{}) // bson.M{} для всіх документів
+	if err != nil {
+		return nil, 0, fmt.Errorf("failed to count surveys: %w", err)
 	}
 
 	return surveys, total, nil

@@ -44,13 +44,14 @@ services:
     environment:
       MONGO_INITDB_ROOT_USERNAME: mongo_admin
       MONGO_INITDB_ROOT_PASSWORD: mongo_password
+      MONGO_INITDB_DATABASE: admin
     ports:
       - "27017:27017"
     volumes:
       - mongodb_data:/data/db
     restart: unless-stopped
     healthcheck:
-      test: ["CMD", "mongo", "--eval", "db.adminCommand('ping')"]
+      test: ["CMD", "mongosh", "--eval", "db.adminCommand('ping')", "--quiet"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -76,8 +77,8 @@ services:
   # Authentication Service
   auth_service:
     build:
-      context: ./backend/services/auth_service
-      dockerfile: Dockerfile
+      context: ./backend
+      dockerfile: services/auth_service/Dockerfile
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
@@ -85,6 +86,7 @@ services:
       DB_PASSWORD: survey_password
       DB_NAME: survey_platform
       JWT_SECRET: your_jwt_secret_key
+      JWT_SECRET_KEY: your_jwt_secret_key
       CONSUL_ADDR: consul:8500
       SERVICE_NAME: auth_service
     ports:
@@ -99,14 +101,15 @@ services:
   # User Service
   user_service:
     build:
-      context: ./backend/services/user_service
-      dockerfile: Dockerfile
+      context: ./backend
+      dockerfile: services/user_service/Dockerfile
     environment:
       DB_HOST: postgres
       DB_PORT: 5432
       DB_USER: survey_user
       DB_PASSWORD: survey_password
       DB_NAME: survey_platform
+      JWT_SECRET_KEY: your_jwt_secret_key
       CONSUL_ADDR: consul:8500
       SERVICE_NAME: user_service
     ports:
@@ -121,8 +124,8 @@ services:
   # Survey Service
   survey_service:
     build:
-      context: ./backend/services/survey_service
-      dockerfile: Dockerfile
+      context: ./backend
+      dockerfile: services/survey_service/Dockerfile
     environment:
       POSTGRES_HOST: postgres
       POSTGRES_PORT: 5432
@@ -134,8 +137,12 @@ services:
       MONGO_USER: mongo_admin
       MONGO_PASSWORD: mongo_password
       MONGO_DB: survey_db
+      MONGO_AUTH_SOURCE: admin
+      MONGO_URI: mongodb://mongo_admin:mongo_password@mongodb:27017/survey_db?authSource=admin
       CONSUL_ADDR: consul:8500
       SERVICE_NAME: survey_service
+      JWT_SECRET: your_jwt_secret_key
+      JWT_SECRET_KEY: your_jwt_secret_key
     ports:
       - "8082:8082"
     depends_on:
@@ -150,14 +157,15 @@ services:
   # Survey Taking Service
   survey_taking_service:
     build:
-      context: ./backend/services/survey_taking_service
-      dockerfile: Dockerfile
+      context: ./backend
+      dockerfile: services/survey_taking_service/Dockerfile
     environment:
       MONGO_HOST: mongodb
       MONGO_PORT: 27017
       MONGO_USER: mongo_admin
       MONGO_PASSWORD: mongo_password
       MONGO_DB: survey_db
+      MONGO_AUTH_SOURCE: admin
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: rabbit_user
@@ -167,6 +175,8 @@ services:
       RABBITMQ_ROUTING_KEY: response.new
       CONSUL_ADDR: consul:8500
       SERVICE_NAME: survey_taking_service
+      SERVER_PORT: "8083"
+      SURVEY_SERVICE_URL: http://survey_service:8082
     ports:
       - "8083:8083"
     depends_on:
@@ -181,14 +191,15 @@ services:
   # Response Processor Service
   response_processor_service:
     build:
-      context: ./backend/services/response_processor_service
-      dockerfile: Dockerfile
+      context: ./backend
+      dockerfile: services/response_processor_service/Dockerfile
     environment:
       MONGO_HOST: mongodb
       MONGO_PORT: 27017
       MONGO_USER: mongo_admin
       MONGO_PASSWORD: mongo_password
       MONGO_DB: survey_results
+      MONGO_AUTH_SOURCE: admin
       RABBITMQ_HOST: rabbitmq
       RABBITMQ_PORT: 5672
       RABBITMQ_USER: rabbit_user
@@ -211,16 +222,18 @@ services:
   # Analytics Service
   analytics_service:
     build:
-      context: ./backend/services/analytics_service
-      dockerfile: Dockerfile
+      context: ./backend
+      dockerfile: services/analytics_service/Dockerfile
     environment:
       MONGO_HOST: mongodb
       MONGO_PORT: 27017
       MONGO_USER: mongo_admin
       MONGO_PASSWORD: mongo_password
       MONGO_DB: survey_results
+      MONGO_AUTH_SOURCE: admin
       CONSUL_ADDR: consul:8500
       SERVICE_NAME: analytics_service
+      SERVER_PORT: "8084"
     ports:
       - "8084:8084"
     depends_on:
@@ -233,8 +246,8 @@ services:
   # API Gateway
   api_gateway:
     build:
-      context: ./backend/api_gateway
-      dockerfile: Dockerfile
+      context: ./backend
+      dockerfile: api_gateway/Dockerfile
     environment:
       AUTH_SERVICE_URL: http://auth_service:8080
       USER_SERVICE_URL: http://user_service:8081
@@ -245,14 +258,13 @@ services:
       CONSUL_ENABLED: "true"
       USE_CONSUL_FOR_SD: "true"
     ports:
-      - "8000:8000"
+      - "8000:8080"
     depends_on:
       - auth_service
       - user_service
       - survey_service
       - survey_taking_service
       - analytics_service
-      - consul
     restart: unless-stopped
 
   # Frontend

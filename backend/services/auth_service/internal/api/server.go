@@ -11,12 +11,11 @@ import (
 	"time"
 
 	"github.com/go-chi/chi/v5"
-	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
+	chimiddleware "github.com/go-chi/chi/v5/middleware"
 
 	"github.com/VitaliySynytskyi/survey-platform/backend/services/auth_service/internal/auth"
 	"github.com/VitaliySynytskyi/survey-platform/backend/services/auth_service/internal/config"
-	authMiddleware "github.com/VitaliySynytskyi/survey-platform/backend/services/auth_service/internal/middleware"
+	authmiddleware "github.com/VitaliySynytskyi/survey-platform/backend/services/auth_service/internal/middleware"
 	"github.com/VitaliySynytskyi/survey-platform/backend/services/auth_service/internal/store"
 )
 
@@ -89,32 +88,27 @@ func (s *Server) SetupRoutes() http.Handler {
 	r := chi.NewRouter()
 
 	// Middleware
-	r.Use(middleware.RequestID)
-	r.Use(middleware.RealIP)
-	r.Use(middleware.Logger)
-	r.Use(middleware.Recoverer)
-	r.Use(middleware.Timeout(30 * time.Second))
+	r.Use(chimiddleware.RequestID)
+	r.Use(chimiddleware.RealIP)
+	r.Use(chimiddleware.Logger)
+	r.Use(chimiddleware.Recoverer)
+	r.Use(chimiddleware.Timeout(30 * time.Second))
 
-	// CORS configuration
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:80", "http://localhost:3000"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type"},
-		AllowCredentials: true,
-		MaxAge:           300, // Maximum cache age for preflight options request
-	}))
+	// CORS is handled by API Gateway, so it's not needed here
+	// Removed CORS middleware to avoid duplicate headers
 
 	// Health check endpoint
 	r.Get("/health", s.healthCheckHandler)
 
 	// Auth routes - no authentication needed
-	r.Route("/auth", func(r chi.Router) {
+	r.Group(func(r chi.Router) {
 		r.Post("/register", s.handler.RegisterHandler)
 		r.Post("/login", s.handler.LoginHandler)
 		r.Post("/refresh", s.handler.RefreshHandler)
+		r.Post("/logout", s.handler.LogoutHandler)
 
 		// Protected route - requires authentication
-		authMid := authMiddleware.NewAuthMiddleware(s.tokenManager)
+		authMid := authmiddleware.NewAuthMiddleware(s.tokenManager)
 		r.With(authMid.Authenticate).Get("/me", s.handler.MeHandler)
 	})
 

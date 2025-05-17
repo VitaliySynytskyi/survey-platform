@@ -1,25 +1,35 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
+	"errors"
+	"fmt"
+	"io"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
+	"time"
 
+	"github.com/VitaliySynytskyi/survey-platform/backend/services/user_service/internal/config"
 	"github.com/VitaliySynytskyi/survey-platform/backend/services/user_service/internal/domain"
 	"github.com/VitaliySynytskyi/survey-platform/backend/services/user_service/internal/store"
+	"github.com/go-chi/chi/v5"
 	"github.com/google/uuid"
 )
 
 // UserHandler handles HTTP requests related to users
 type UserHandler struct {
 	userStore store.UserStore
+	cfg       *config.Config
 }
 
 // NewUserHandler creates a new UserHandler
-func NewUserHandler(userStore store.UserStore) *UserHandler {
+func NewUserHandler(userStore store.UserStore, cfg *config.Config) *UserHandler {
 	return &UserHandler{
 		userStore: userStore,
+		cfg:       cfg,
 	}
 }
 
@@ -280,6 +290,81 @@ func (h *UserHandler) UpdateRoleHandler(w http.ResponseWriter, r *http.Request) 
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(user.ToResponse())
+}
+
+// GetUserSurveysHandler handles requests to fetch surveys for a specific user by calling the survey_service
+func (h *UserHandler) GetUserSurveysHandler(w http.ResponseWriter, r *http.Request) {
+	// Extract user ID from path
+	userID := chi.URLParam(r, "id")
+	log.Printf("[UserHandler - user_service] GetUserSurveysHandler called for userID: %s", userID)
+
+	// The Authenticate middleware (applied at the router level) already ensures
+	// that the request is authenticated. We just need to forward the token.
+
+	// Retrieve survey_service URL from config
+	surveyServiceBaseURL := h.cfg.SurveyServiceURL
+	if surveyServiceBaseURL == "" {
+		log.Println("[UserHandler - user_service] Error: SURVEY_SERVICE_URL is not configured")
+		http.Error(w, "Internal server configuration error: Survey service URL missing", http.StatusInternalServerError)
+		return
+	}
+
+	targetURL := fmt.Sprintf("%s/users/%s/surveys", surveyServiceBaseURL, userID)
+	log.Printf("[UserHandler - user_service] Attempting to call survey_service at URL: %s", targetURL)
+
+	// Create a new request to the survey_service
+	req, err := http.NewRequestWithContext(r.Context(), "GET", targetURL, nil)
+	if err != nil {
+		log.Printf("[UserHandler - user_service] Failed to create request to survey service: %v", err)
+		http.Error(w, "Failed to create request to survey service: "+err.Error(), http.StatusInternalServerError)
+		return
+	}
+
+	// Forward the Authorization header
+	originalAuthToken := r.Header.Get("Authorization")
+	if originalAuthToken != "" {
+		req.Header.Set("Authorization", originalAuthToken)
+	}
+	req.Header.Set("Content-Type", "application/json")
+
+	// Make the HTTP request
+	client := &http.Client{Timeout: 10 * time.Second}
+	log.Printf("[UserHandler - user_service] Sending request to survey_service...")
+	resp, err := client.Do(req)
+	if err != nil {
+		errorMsg := fmt.Sprintf("Failed to call survey_service (url: %s): %v", targetURL, err)
+		log.Printf("[UserHandler - user_service] Error calling survey_service: %s", errorMsg)
+		if errors.Is(err, context.DeadlineExceeded) {
+			http.Error(w, "Request to survey service timed out: "+errorMsg, http.StatusGatewayTimeout)
+		} else if errors.Is(err, context.Canceled) {
+			http.Error(w, "Request to survey service canceled: "+errorMsg, http.StatusGatewayTimeout)
+		} else {
+			// For other errors, including connection refused, return 502 Bad Gateway
+			http.Error(w, "Failed to communicate with survey service: "+errorMsg, http.StatusBadGateway)
+		}
+		return
+	}
+	defer resp.Body.Close()
+
+	log.Printf("[UserHandler - user_service] Received response from survey_service with StatusCode: %d", resp.StatusCode)
+
+	// Forward the status code from survey_service
+	w.WriteHeader(resp.StatusCode)
+
+	// Forward the response body from survey_service
+	if _, err := io.Copy(w, resp.Body); err != nil {
+		log.Printf("[UserHandler - user_service] Error copying response body from survey_service: %v. Response status was %d.", err, resp.StatusCode)
+		if resp.StatusCode == http.StatusNoContent {
+			return
+		}
+		// Avoid writing another http.Error if headers already sent (e.g. if WriteHeader was already called)
+		// A simple check, might need more robust handling for edge cases.
+		if len(w.Header().Values("Content-Length")) == 0 && len(w.Header().Values("Transfer-Encoding")) == 0 {
+			http.Error(w, "Failed to write response from survey service", http.StatusInternalServerError)
+		}
+		return
+	}
+	log.Printf("[UserHandler - user_service] Successfully forwarded response from survey_service for userID: %s", userID)
 }
 
 // HealthStatus represents the status of the service and its dependencies

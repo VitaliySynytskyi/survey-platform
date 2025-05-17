@@ -5,6 +5,8 @@ import (
 	"net/http"
 	"strings"
 
+	"log"
+
 	"github.com/VitaliySynytskyi/survey-platform/backend/services/auth_service/internal/auth"
 	"github.com/VitaliySynytskyi/survey-platform/backend/services/auth_service/internal/domain"
 	"github.com/VitaliySynytskyi/survey-platform/backend/services/auth_service/internal/store"
@@ -201,6 +203,41 @@ func (h *Handler) RefreshHandler(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	w.WriteHeader(http.StatusOK)
 	json.NewEncoder(w).Encode(tokenResponse)
+}
+
+// LogoutHandler handles user logout
+func (h *Handler) LogoutHandler(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "Method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+
+	var req domain.RefreshRequest // Assuming logout sends refresh token for invalidation
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		// If body is empty or not JSON, it's a bad request or we can proceed if RT is optional
+		// For now, let's assume RT is expected for proper invalidation.
+		http.Error(w, "Invalid request body: refresh_token expected for logout", http.StatusBadRequest)
+		return
+	}
+
+	if req.RefreshToken == "" {
+		http.Error(w, "Refresh token is required for logout", http.StatusBadRequest)
+		return
+	}
+
+	// Attempt to invalidate the refresh token
+	err := h.tokenManager.InvalidateRefreshToken(req.RefreshToken)
+	if err != nil {
+		// Log the error but don't necessarily send a 500, as logout should ideally always succeed on client-side
+		// unless the token was already invalid, which is fine.
+		// Depending on the error type from InvalidateRefreshToken, we might adjust.
+		// For example, if ErrInvalidToken is returned, it's not a server error.
+		log.Printf("Error invalidating refresh token during logout: %v", err)
+		// We can choose to return 200/204 even if token was already invalid or not found for invalidation
+	}
+
+	w.WriteHeader(http.StatusOK)
+	json.NewEncoder(w).Encode(map[string]string{"message": "Logout successful"})
 }
 
 // MeHandler handles getting current user information

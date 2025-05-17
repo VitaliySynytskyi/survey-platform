@@ -130,11 +130,11 @@ func Load() *Config {
 			},
 		},
 		CORS: CORSConfig{
-			AllowedOrigins:   getEnvStringSlice("CORS_ALLOWED_ORIGINS", []string{"http://localhost:80", "http://localhost:3000"}),
+			AllowedOrigins:   getEnvStringSlice("CORS_ALLOWED_ORIGINS", []string{"*"}),
 			AllowedMethods:   getEnvStringSlice("CORS_ALLOWED_METHODS", []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"}),
 			AllowedHeaders:   getEnvStringSlice("CORS_ALLOWED_HEADERS", []string{"Accept", "Authorization", "Content-Type", "X-CSRF-Token"}),
 			ExposedHeaders:   getEnvStringSlice("CORS_EXPOSED_HEADERS", []string{"Link"}),
-			AllowCredentials: getEnvBool("CORS_ALLOW_CREDENTIALS", true),
+			AllowCredentials: getEnvBool("CORS_ALLOW_CREDENTIALS", false),
 			MaxAge:           getEnvInt("CORS_MAX_AGE", 300),
 		},
 		RateLimiting: RateLimitingConfig{

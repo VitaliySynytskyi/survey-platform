@@ -1,46 +1,71 @@
 <template>
   <div class="survey-take-page">
-    <div class="container py-5">
-      <div v-if="loading" class="text-center py-5">
-        <div class="spinner-border" role="status">
-          <span class="visually-hidden">Loading...</span>
+    <div class="container py-4">
+      <div v-if="loading" class="loading-container text-center py-5">
+        <div class="spinner">
+          <div class="spinner-border text-primary" role="status">
+            <span class="visually-hidden">Loading...</span>
+          </div>
         </div>
-        <p class="mt-3">Loading survey...</p>
+        <p class="mt-3 text-muted">Loading survey...</p>
       </div>
 
-      <div v-else-if="error" class="alert alert-danger" role="alert">
-        <h4 class="alert-heading">Error loading survey!</h4>
-        <p>{{ error }}</p>
+      <div v-else-if="error" class="error-container alert alert-danger my-4 shadow-sm" role="alert">
+        <h4 class="alert-heading mb-2">Error loading survey!</h4>
+        <p class="mb-0">{{ error }}</p>
+        <div class="mt-3">
+          <button @click="fetchSurvey" class="btn btn-outline-danger">Try Again</button>
+          <button @click="goToHome" class="btn btn-outline-secondary ms-2">Return Home</button>
+        </div>
       </div>
 
-      <div v-else-if="submitted" class="submitted-container text-center py-5">
+      <div v-else-if="submitted" class="submitted-container text-center py-5 my-5 bg-white rounded shadow">
         <div class="submitted-icon mb-4">
-          <i class="bi bi-check-circle-fill text-success" style="font-size: 4rem;"></i>
+          <i class="bi bi-check-circle-fill text-success" style="font-size: 5rem;"></i>
         </div>
         <h2 class="mb-3">Thank you for your response!</h2>
-        <p class="mb-4">Your answers have been submitted successfully.</p>
-        <button @click="goToHome" class="btn btn-primary">Return to Home</button>
+        <p class="mb-4 text-secondary lead">Your answers have been submitted successfully.</p>
+        <div class="d-flex justify-content-center gap-3">
+          <button @click="goToHome" class="btn btn-primary px-4 py-2">Return to Home</button>
+          <button @click="takeSurveyAgain" class="btn btn-outline-primary px-4 py-2">Take Survey Again</button>
+        </div>
       </div>
 
-      <div v-else-if="survey" class="survey-container">
-        <div class="survey-header mb-4">
-          <h1 class="survey-title">{{ survey.title }}</h1>
-          <p v-if="survey.description" class="survey-description">{{ survey.description }}</p>
+      <div v-else-if="survey" class="survey-container bg-white rounded shadow p-4 p-md-5">
+        <div class="survey-header mb-5 pb-3 border-bottom">
+          <h1 class="survey-title mb-3">{{ survey.title }}</h1>
+          <p v-if="survey.description" class="survey-description lead">{{ survey.description }}</p>
+        </div>
+
+        <!-- Progress indicator -->
+        <div class="progress-container mb-4" v-if="survey.questions && survey.questions.length > 0">
+          <div class="d-flex justify-content-between mb-2">
+            <span class="text-muted">Question {{ currentQuestionNumber }} of {{ survey.questions.length }}</span>
+            <span class="text-muted">{{ Math.round((currentQuestionNumber / survey.questions.length) * 100) }}% completed</span>
+          </div>
+          <div class="progress" style="height: 8px;">
+            <div 
+              class="progress-bar" 
+              :style="{ width: `${(currentQuestionNumber / survey.questions.length) * 100}%` }"
+            ></div>
+          </div>
         </div>
 
         <form @submit.prevent="submitSurvey" class="survey-form">
-          <div v-for="question in sortedQuestions" :key="question.id" class="question-container mb-4 p-4 border rounded">
+          <div v-for="(question, index) in sortedQuestions" :key="question.id" 
+              class="question-container mb-4 p-4 border rounded"
+              :class="{'active-question': index === currentQuestionIndex}">
             <div class="question-header mb-3">
-              <h3 class="question-title">
+              <h3 class="question-title d-flex align-items-center">
                 {{ question.title }}
-                <span v-if="question.required" class="text-danger">*</span>
+                <span v-if="question.required" class="text-danger ms-2">*</span>
               </h3>
-              <p v-if="question.description" class="question-description text-muted">{{ question.description }}</p>
+              <p v-if="question.description" class="question-description text-muted mt-2">{{ question.description }}</p>
             </div>
 
             <!-- Single Choice Question -->
             <div v-if="question.type === 'single-choice'" class="question-options">
-              <div v-for="option in sortOptions(question.options)" :key="option.id" class="form-check mb-2">
+              <div v-for="option in sortOptions(question.options)" :key="option.id" class="form-check mb-3">
                 <input
                   :id="`option-${option.id}`"
                   type="radio"
@@ -56,7 +81,7 @@
 
             <!-- Multiple Choice Question -->
             <div v-else-if="question.type === 'multiple-choice'" class="question-options">
-              <div v-for="option in sortOptions(question.options)" :key="option.id" class="form-check mb-2">
+              <div v-for="option in sortOptions(question.options)" :key="option.id" class="form-check mb-3">
                 <input
                   :id="`option-${option.id}`"
                   type="checkbox"
@@ -67,8 +92,8 @@
                 >
                 <label :for="`option-${option.id}`" class="form-check-label">{{ option.text }}</label>
               </div>
-              <div v-if="question.required && validationErrors[question.id]" class="text-danger">
-                Please select at least one option
+              <div v-if="question.required && validationErrors[question.id]" class="text-danger mt-2 small">
+                <i class="bi bi-exclamation-circle me-1"></i>Please select at least one option
               </div>
             </div>
 
@@ -86,29 +111,46 @@
 
             <!-- Scale Question -->
             <div v-else-if="question.type === 'scale'" class="question-scale">
-              <div class="scale-container d-flex justify-content-between mb-2">
-                <span v-for="value in 5" :key="value" class="scale-point">
-                  <input
-                    :id="`scale-${question.id}-${value}`"
-                    type="radio"
-                    class="btn-check"
-                    :name="`question-${question.id}`"
-                    :value="value.toString()"
-                    v-model="answers[question.id]"
-                    :required="question.required"
-                  >
-                  <label :for="`scale-${question.id}-${value}`" class="btn btn-outline-primary">{{ value }}</label>
-                </span>
+              <div class="scale-container d-flex justify-content-between align-items-center mb-3">
+                <span class="scale-label">Low</span>
+                <div class="scale-buttons">
+                  <span v-for="value in 5" :key="value" class="scale-point">
+                    <input
+                      :id="`scale-${question.id}-${value}`"
+                      type="radio"
+                      class="btn-check"
+                      :name="`question-${question.id}`"
+                      :value="value.toString()"
+                      v-model="answers[question.id]"
+                      :required="question.required"
+                    >
+                    <label :for="`scale-${question.id}-${value}`" class="btn btn-outline-primary scale-btn">{{ value }}</label>
+                  </span>
+                </div>
+                <span class="scale-label">High</span>
               </div>
-              <div class="scale-labels d-flex justify-content-between">
-                <small>Low</small>
-                <small>High</small>
-              </div>
+            </div>
+
+            <!-- Navigation buttons for each question -->
+            <div class="question-navigation mt-4 d-flex justify-content-between">
+              <button v-if="index > 0" 
+                type="button" 
+                class="btn btn-outline-secondary" 
+                @click="currentQuestionIndex = index - 1">
+                <i class="bi bi-chevron-left me-2"></i>Previous
+              </button>
+              <div class="flex-grow-1"></div>
+              <button v-if="index < sortedQuestions.length - 1" 
+                type="button" 
+                class="btn btn-outline-primary" 
+                @click="currentQuestionIndex = index + 1">
+                Next<i class="bi bi-chevron-right ms-2"></i>
+              </button>
             </div>
           </div>
 
-          <div class="survey-actions mt-5 text-center">
-            <button type="submit" class="btn btn-primary btn-lg" :disabled="submitting">
+          <div class="survey-actions mt-5 d-flex justify-content-center">
+            <button type="submit" class="btn btn-primary btn-lg px-5 py-3" :disabled="submitting">
               <span v-if="submitting" class="spinner-border spinner-border-sm me-2" role="status" aria-hidden="true"></span>
               {{ submitting ? 'Submitting...' : 'Submit Response' }}
             </button>
@@ -116,8 +158,12 @@
         </form>
       </div>
 
-      <div v-else class="alert alert-warning text-center" role="alert">
-        Survey not found or has been removed.
+      <div v-else class="alert alert-warning text-center my-5 shadow-sm" role="alert">
+        <i class="bi bi-exclamation-triangle-fill me-2"></i>
+        <strong>Survey not found or has been removed.</strong>
+        <div class="mt-3">
+          <button @click="goToHome" class="btn btn-warning">Return to Home</button>
+        </div>
       </div>
     </div>
   </div>
@@ -145,11 +191,16 @@ export default {
     const answers = reactive({})
     const multipleChoiceAnswers = reactive({})
     const validationErrors = reactive({})
+    const currentQuestionIndex = ref(0)
     
     // Computed properties
     const sortedQuestions = computed(() => {
       if (!survey.value || !survey.value.questions) return []
       return [...survey.value.questions].sort((a, b) => a.order - b.order)
+    })
+    
+    const currentQuestionNumber = computed(() => {
+      return currentQuestionIndex.value + 1
     })
     
     // Methods
@@ -258,6 +309,23 @@ export default {
       router.push('/')
     }
     
+    const takeSurveyAgain = () => {
+      // Reset everything
+      submitted.value = false
+      currentQuestionIndex.value = 0
+      
+      // Clear all answers
+      for (const key in answers) delete answers[key]
+      
+      // Reset multiple choice answers
+      for (const key in multipleChoiceAnswers) {
+        multipleChoiceAnswers[key] = []
+      }
+      
+      // Clear validation errors
+      for (const key in validationErrors) delete validationErrors[key]
+    }
+    
     // Lifecycle hooks
     onMounted(() => {
       fetchSurvey()
@@ -273,10 +341,14 @@ export default {
       multipleChoiceAnswers,
       validationErrors,
       sortedQuestions,
+      currentQuestionNumber,
+      currentQuestionIndex,
       sortOptions,
       validateRequired,
       submitSurvey,
-      goToHome
+      goToHome,
+      takeSurveyAgain,
+      fetchSurvey
     }
   }
 }
@@ -288,14 +360,29 @@ export default {
   margin: 0 auto;
 }
 
+.loading-container, 
+.error-container {
+  max-width: 600px;
+  margin: 2rem auto;
+  padding: 2rem;
+}
+
 .question-container {
   background-color: #f9f9f9;
   transition: transform 0.2s, box-shadow 0.2s;
+  border-radius: 8px;
+  border-color: #eaeaea !important;
+  position: relative;
+  display: none;
+}
+
+.question-container.active-question {
+  display: block;
 }
 
 .question-container:hover {
   transform: translateY(-2px);
-  box-shadow: 0 4px 8px rgba(0, 0, 0, 0.1);
+  box-shadow: 0 6px 15px rgba(0, 0, 0, 0.08);
 }
 
 .scale-container {
@@ -303,13 +390,105 @@ export default {
   padding: 10px 0;
 }
 
-.scale-point {
-  text-align: center;
-  flex: 1;
+.scale-buttons {
+  display: flex;
+  gap: 10px;
+}
+
+.scale-btn {
+  border-radius: 50%;
+  width: 50px;
+  height: 50px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  font-weight: bold;
+}
+
+.scale-label {
+  color: #6c757d;
+  font-size: 0.9rem;
+  width: 60px;
 }
 
 .submitted-container {
   max-width: 600px;
   margin: 0 auto;
+  padding: 3rem;
+}
+
+.form-check {
+  padding: 10px;
+  border-radius: 5px;
+  margin-bottom: 10px;
+  transition: background-color 0.2s;
+}
+
+.form-check:hover {
+  background-color: #f0f0f0;
+}
+
+.form-check-input:checked + .form-check-label {
+  font-weight: 500;
+  color: #0d6efd;
+}
+
+.form-check-label {
+  cursor: pointer;
+  padding-left: 0.5rem;
+}
+
+.spinner {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 20px;
+}
+
+.progress {
+  height: 8px;
+  background-color: #e9ecef;
+  border-radius: 1rem;
+  overflow: hidden;
+}
+
+.progress-bar {
+  background-color: #0d6efd;
+  transition: width 0.6s ease;
+}
+
+.question-title {
+  color: #333;
+  margin-bottom: 5px;
+}
+
+.question-description {
+  font-size: 0.9rem;
+}
+
+.question-navigation {
+  margin-top: 20px;
+  padding-top: 15px;
+  border-top: 1px solid #eee;
+}
+
+@media (max-width: 768px) {
+  .scale-btn {
+    width: 40px;
+    height: 40px;
+    font-size: 0.9rem;
+  }
+  
+  .question-title {
+    font-size: 1.25rem;
+  }
+  
+  .scale-buttons {
+    gap: 5px;
+  }
+  
+  .scale-label {
+    width: 40px;
+    font-size: 0.8rem;
+  }
 }
 </style> 

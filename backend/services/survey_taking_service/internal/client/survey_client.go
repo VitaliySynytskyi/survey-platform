@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"time"
 
@@ -33,12 +34,15 @@ func NewHTTPSurveyClient(baseURL string) *HTTPSurveyClient {
 
 // GetSurvey retrieves a survey by ID from the survey service
 func (c *HTTPSurveyClient) GetSurvey(ctx context.Context, surveyID string) (*model.SurveyPublic, error) {
+	log.Printf("SURVEY_TAKING_CLIENT: GetSurvey called. BaseURL: '%s', SurveyID: '%s'", c.baseURL, surveyID)
 	// Construct request URL
-	url := fmt.Sprintf("%s/surveys/%s", c.baseURL, surveyID)
+	url := fmt.Sprintf("%s/%s/public", c.baseURL, surveyID)
+	log.Printf("SURVEY_TAKING_CLIENT: Constructed survey service request URL: %s", url)
 
 	// Create request with context
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, url, nil)
 	if err != nil {
+		log.Printf("SURVEY_TAKING_CLIENT: Error creating request to %s: %v", url, err)
 		return nil, fmt.Errorf("error creating request: %w", err)
 	}
 
@@ -46,23 +50,32 @@ func (c *HTTPSurveyClient) GetSurvey(ctx context.Context, surveyID string) (*mod
 	req.Header.Set("Content-Type", "application/json")
 
 	// Send request
+	log.Printf("SURVEY_TAKING_CLIENT: Sending GET request to %s", url)
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		log.Printf("SURVEY_TAKING_CLIENT: Error sending request to %s: %v", url, err)
 		return nil, fmt.Errorf("error sending request: %w", err)
 	}
 	defer resp.Body.Close()
 
+	log.Printf("SURVEY_TAKING_CLIENT: Received response from %s. Status: %s, StatusCode: %d", url, resp.Status, resp.StatusCode)
+
 	// Check response status
 	if resp.StatusCode != http.StatusOK {
-		return nil, fmt.Errorf("unexpected status code: %d", resp.StatusCode)
+		log.Printf("SURVEY_TAKING_CLIENT: Unexpected status code %d from %s", resp.StatusCode, url)
+		// It might be useful to read the body here for more error details, if any
+		// e.g., bodyBytes, _ := io.ReadAll(resp.Body); log.Printf("Response body: %s", string(bodyBytes))
+		return nil, fmt.Errorf("unexpected status code: %d from survey service", resp.StatusCode) // Simplified error message to user
 	}
 
 	// Parse response
 	var survey model.SurveyPublic
 	if err := json.NewDecoder(resp.Body).Decode(&survey); err != nil {
+		log.Printf("SURVEY_TAKING_CLIENT: Error decoding JSON response from %s: %v", url, err)
 		return nil, fmt.Errorf("error decoding response: %w", err)
 	}
 
+	log.Printf("SURVEY_TAKING_CLIENT: Successfully decoded survey response for ID %s. Title: %s", survey.ID, survey.Title)
 	return &survey, nil
 }
 

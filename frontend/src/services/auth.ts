@@ -2,14 +2,15 @@ import apiClient from './axios'
 import { User } from '@/types/user'
 
 interface LoginResponse {
-  user: User
-  accessToken: string
-  refreshToken: string
+  access_token: string
+  refresh_token: string
+  expires_in: number
 }
 
 interface TokenResponse {
-  accessToken: string
-  refreshToken: string
+  access_token: string
+  refresh_token: string
+  expires_in: number
 }
 
 const authService = {
@@ -17,7 +18,14 @@ const authService = {
    * Register a new user
    */
   async register(email: string, password: string): Promise<void> {
-    await apiClient.post('/auth/register', { email, password })
+    console.log("Sending registration request with:", { email, password });
+    try {
+      const response = await apiClient.post('/auth/register', { email, password });
+      console.log("Registration response:", response.data);
+    } catch (error: any) {
+      console.error("Registration error:", error.response?.data || error.message);
+      throw error;
+    }
   },
 
   /**
@@ -31,17 +39,16 @@ const authService = {
   /**
    * Logout user
    */
-  async logout(token: string): Promise<void> {
-    await apiClient.post('/auth/logout', {}, {
-      headers: { Authorization: `Bearer ${token}` }
-    })
+  async logout(refreshTokenValue: string | null): Promise<void> {
+    const payload = refreshTokenValue ? { refresh_token: refreshTokenValue } : {};
+    await apiClient.post('/auth/logout', payload)
   },
 
   /**
    * Get new access token using refresh token
    */
   async refreshToken(refreshToken: string): Promise<TokenResponse> {
-    const response = await apiClient.post<TokenResponse>('/auth/refresh', { refreshToken })
+    const response = await apiClient.post<TokenResponse>('/auth/refresh', { refresh_token: refreshToken })
     return response.data
   },
 

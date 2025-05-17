@@ -1,80 +1,108 @@
 <template>
   <div class="my-surveys-page">
-    <div class="container">
-      <div class="page-header">
-        <h1>My Surveys</h1>
-        <router-link to="/surveys/new" class="btn">Create New Survey</router-link>
+    <div class="container py-4">
+      <div class="d-flex justify-content-between align-items-center mb-4">
+        <h1 class="mb-0">My Surveys</h1>
+        <router-link to="/surveys/create" class="btn btn-primary">
+          <i class="bi bi-plus-lg me-2"></i>Create New Survey
+        </router-link>
       </div>
-      
-      <div v-if="loading" class="loading">Loading surveys...</div>
-      
-      <div v-else-if="error" class="error-text">{{ error }}</div>
-      
-      <div v-else-if="surveys.length === 0" class="empty-state">
-        <p>You haven't created any surveys yet.</p>
-        <router-link to="/surveys/new" class="btn">Create Your First Survey</router-link>
+
+      <!-- Loading State -->
+      <div v-if="loading" class="d-flex flex-column align-items-center justify-content-center py-5">
+        <div class="spinner-border text-primary mb-3" role="status">
+          <span class="visually-hidden">Loading...</span>
+        </div>
+        <p class="text-muted">Loading your surveys...</p>
       </div>
-      
-      <div v-else class="surveys-list">
-        <div v-for="survey in surveys" :key="survey.id" class="survey-card">
-          <div class="survey-card-header">
-            <h3>{{ survey.title }}</h3>
-            <div class="survey-meta">
-              <span class="questions-count">{{ survey.questions.length }} questions</span>
-              <span class="date">Created: {{ formatDate(survey.created_at) }}</span>
+
+      <!-- Error State -->
+      <div v-else-if="error" class="alert alert-danger shadow-sm" role="alert">
+        <h4 class="alert-heading mb-2">
+          <i class="bi bi-exclamation-triangle-fill me-2"></i>Error
+        </h4>
+        <p>{{ error }}</p>
+        <hr>
+        <div class="d-flex">
+          <button @click="fetchSurveys" class="btn btn-outline-danger">
+            <i class="bi bi-arrow-repeat me-2"></i>Try Again
+          </button>
+          <router-link to="/login" v-if="!authStore.isAuthenticated" class="btn btn-primary ms-2">
+            Log In
+          </router-link>
+        </div>
+      </div>
+
+      <!-- Empty State -->
+      <div v-else-if="surveys.length === 0 && !error" class="empty-state text-center py-5 bg-light rounded shadow-sm">
+        <div class="empty-icon mb-4">
+          <i class="bi bi-clipboard-plus" style="font-size: 4rem; color: #6c757d;"></i>
+        </div>
+        <h3>You haven't created any surveys yet</h3>
+        <p class="text-muted mb-4">Get started by creating your first survey</p>
+        <router-link to="/surveys/create" class="btn btn-primary btn-lg">
+          <i class="bi bi-plus-lg me-2"></i>Create Your First Survey
+        </router-link>
+      </div>
+
+      <!-- Survey List -->
+      <div v-else class="row">
+        <div v-for="survey in surveys" :key="survey.id" class="col-md-6 col-lg-4 mb-4">
+          <div class="card survey-card h-100 shadow-sm">
+            <div class="card-header bg-white border-bottom">
+              <div class="d-flex justify-content-between align-items-center">
+                <span class="badge rounded-pill" :class="getStatusClass(survey)">{{ getStatusText(survey) }}</span>
+                <div class="dropdown">
+                  <button class="btn btn-sm btn-light" type="button" data-bs-toggle="dropdown" aria-expanded="false">
+                    <i class="bi bi-three-dots-vertical"></i>
+                  </button>
+                  <ul class="dropdown-menu dropdown-menu-end">
+                    <li>
+                      <router-link :to="`/surveys/${survey.id}/edit`" class="dropdown-item">
+                        <i class="bi bi-pencil me-2"></i>Edit
+                      </router-link>
+                    </li>
+                    <li>
+                      <router-link :to="`/surveys/${survey.id}/results`" class="dropdown-item">
+                        <i class="bi bi-bar-chart me-2"></i>Results
+                      </router-link>
+                    </li>
+                    <li><hr class="dropdown-divider"></li>
+                    <li>
+                      <a href="#" @click.prevent="confirmDeleteSurvey(survey.id)" class="dropdown-item text-danger">
+                        <i class="bi bi-trash me-2"></i>Delete
+                      </a>
+                    </li>
+                  </ul>
+                </div>
+              </div>
+            </div>
+            <div class="card-body d-flex flex-column">
+              <h5 class="card-title mb-2">{{ survey.title }}</h5>
+              <p class="card-text text-muted mb-3 flex-grow-1">
+                {{ survey.description || 'No description provided' }}
+              </p>
+              <div class="survey-meta small text-muted mb-3">
+                <div class="meta-item mb-1">
+                  <i class="bi bi-calendar me-2"></i>Created: {{ formatDate(survey.created_at) }}
+                </div>
+                <div class="meta-item mb-1" v-if="survey.updated_at">
+                  <i class="bi bi-pencil me-2"></i>Updated: {{ formatDate(survey.updated_at) }}
+                </div>
+                <div class="meta-item" v-if="survey.questions?.length">
+                  <i class="bi bi-list-check me-2"></i>Questions: {{ survey.questions.length }}
+                </div>
+              </div>
+            </div>
+            <div class="card-footer bg-white border-top d-flex justify-content-between">
+              <router-link :to="`/surveys/${survey.id}/take`" class="btn btn-primary">
+                <i class="bi bi-pencil-square me-1"></i>Take
+              </router-link>
+              <button class="btn btn-outline-secondary ms-2" @click="copyShareLink(survey.id)">
+                <i class="bi bi-share me-1"></i>Share
+              </button>
             </div>
           </div>
-          
-          <p v-if="survey.description" class="survey-description">
-            {{ survey.description }}
-          </p>
-          
-          <div class="survey-actions">
-            <router-link :to="`/surveys/${survey.id}/edit`" class="btn-edit">
-              <span class="btn-icon">✏️</span>
-              Edit
-            </router-link>
-            <button @click="confirmDelete(survey)" class="btn-delete">
-              <span class="btn-icon">🗑️</span>
-              Delete
-            </button>
-          </div>
-        </div>
-        
-        <!-- Pagination controls -->
-        <div v-if="totalPages > 1" class="pagination">
-          <button 
-            :disabled="currentPage === 1" 
-            @click="changePage(currentPage - 1)" 
-            class="pagination-btn"
-          >
-            Previous
-          </button>
-          
-          <span class="pagination-info">
-            Page {{ currentPage }} of {{ totalPages }}
-          </span>
-          
-          <button 
-            :disabled="currentPage === totalPages" 
-            @click="changePage(currentPage + 1)" 
-            class="pagination-btn"
-          >
-            Next
-          </button>
-        </div>
-      </div>
-    </div>
-    
-    <!-- Delete confirmation modal (simplified) -->
-    <div v-if="showDeleteModal" class="modal-overlay">
-      <div class="modal-content">
-        <h3>Confirm Delete</h3>
-        <p>Are you sure you want to delete survey "{{ surveyToDelete?.title }}"?</p>
-        <p>This action cannot be undone.</p>
-        <div class="modal-actions">
-          <button @click="deleteConfirmed" class="btn-delete">Delete</button>
-          <button @click="cancelDelete" class="btn-cancel">Cancel</button>
         </div>
       </div>
     </div>
@@ -82,277 +110,167 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from 'vue'
-import { useRouter } from 'vue-router'
-import { useAuthStore } from '@/stores/auth'
-import surveyService from '@/services/survey'
-import { Survey } from '@/types/survey'
+import { ref, onMounted, Ref } from 'vue';
+import { useRouter } from 'vue-router';
+import surveyService from '@/services/survey';
+import { useAuthStore } from '@/stores/auth';
+import type { Survey } from '@/types/survey';
 
-const router = useRouter()
-const authStore = useAuthStore()
+interface ExtendedSurvey extends Survey {
+  is_published?: boolean;
+  is_draft?: boolean;
+}
 
-const surveys = ref<Survey[]>([])
-const loading = ref(true)
-const error = ref('')
-const currentPage = ref(1)
-const totalSurveys = ref(0)
-const perPage = ref(10)
-
-// For delete modal
-const showDeleteModal = ref(false)
-const surveyToDelete = ref<Survey | null>(null)
-
-// Computed properties for pagination
-const totalPages = computed(() => Math.ceil(totalSurveys.value / perPage.value))
-
-onMounted(async () => {
-  await fetchSurveys()
-})
+const surveys: Ref<ExtendedSurvey[]> = ref([]);
+const loading: Ref<boolean> = ref(true);
+const error: Ref<string | null> = ref(null);
+const authStore = useAuthStore();
+const router = useRouter();
 
 const fetchSurveys = async () => {
-  if (!authStore.user) {
-    return
+  if (!authStore.user?.id) {
+    error.value = 'Please log in to view your surveys';
+    loading.value = false;
+    return;
   }
-  
-  loading.value = true
-  error.value = ''
-  
   try {
-    const response = await surveyService.getUserSurveys(
-      authStore.user.id, 
-      currentPage.value, 
-      perPage.value
-    )
-    
-    surveys.value = response.surveys
-    totalSurveys.value = response.totalCount
-  } catch (e: any) {
-    error.value = e.message || 'Failed to fetch surveys'
-  } finally {
-    loading.value = false
-  }
-}
-
-const changePage = async (page: number) => {
-  currentPage.value = page
-  await fetchSurveys()
-  // Scroll to top when changing page
-  window.scrollTo(0, 0)
-}
-
-const confirmDelete = (survey: Survey) => {
-  surveyToDelete.value = survey
-  showDeleteModal.value = true
-}
-
-const cancelDelete = () => {
-  showDeleteModal.value = false
-  surveyToDelete.value = null
-}
-
-const deleteConfirmed = async () => {
-  if (!surveyToDelete.value) return
-  
-  loading.value = true
-  
-  try {
-    await surveyService.deleteSurvey(surveyToDelete.value.id)
-    // Remove from the local list
-    surveys.value = surveys.value.filter(s => s.id !== surveyToDelete.value?.id)
-    showDeleteModal.value = false
-    surveyToDelete.value = null
-    
-    // Reload if we emptied the page
-    if (surveys.value.length === 0 && currentPage.value > 1) {
-      currentPage.value -= 1
-      await fetchSurveys()
+    loading.value = true;
+    const response = await surveyService.getUserSurveys(authStore.user.id, 1, 100);
+    surveys.value = response.surveys;
+  } catch (err: any) {
+    console.error('Failed to fetch surveys:', err);
+    error.value = err.response?.data?.error || err.message || 'Failed to load surveys';
+    if (err.response?.status === 401 || err.response?.status === 403) {
+        router.push('/login');
     }
-  } catch (e: any) {
-    error.value = e.message || 'Failed to delete survey'
   } finally {
-    loading.value = false
+    loading.value = false;
   }
-}
+};
 
-// Format date helper function
-const formatDate = (dateString: string) => {
-  if (!dateString) return 'N/A'
-  const date = new Date(dateString)
-  return date.toLocaleDateString()
-}
+const formatDate = (dateString?: string): string => {
+  if (!dateString) return 'N/A';
+  return new Date(dateString).toLocaleDateString();
+};
+
+const confirmDeleteSurvey = async (surveyId: string) => {
+  if (window.confirm('Are you sure you want to delete this survey? This action cannot be undone.')) {
+    try {
+      await surveyService.deleteSurvey(surveyId);
+      surveys.value = surveys.value.filter((s: Survey) => s.id !== surveyId);
+    } catch (err: any) {
+      console.error('Failed to delete survey:', err);
+      alert(err.response?.data?.error || 'Failed to delete survey');
+    }
+  }
+};
+
+const getStatusClass = (survey: Survey): string => {
+  if (survey.is_published) {
+    return 'bg-success';
+  } else if (survey.is_draft) {
+    return 'bg-secondary';
+  } else {
+    return 'bg-primary';
+  }
+};
+
+const getStatusText = (survey: Survey): string => {
+  if (survey.is_published) {
+    return 'Published';
+  } else if (survey.is_draft) {
+    return 'Draft';
+  } else {
+    return 'Active';
+  }
+};
+
+const copyShareLink = (surveyId: string) => {
+  const shareUrl = `${window.location.origin}/surveys/${surveyId}/take`;
+  navigator.clipboard.writeText(shareUrl)
+    .then(() => {
+      alert('Share link copied to clipboard!');
+    })
+    .catch(() => {
+      alert('Failed to copy link. The share URL is: ' + shareUrl);
+    });
+};
+
+onMounted(() => {
+  if (authStore.isAuthenticated) {
+    fetchSurveys();
+  } else {
+    error.value = "Please log in to see your surveys";
+    loading.value = false;
+  }
+});
 </script>
 
 <style scoped>
 .my-surveys-page {
-  padding: 2rem 0;
-}
-
-.page-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  margin-bottom: 2rem;
-}
-
-.page-header h1 {
-  margin: 0;
-  color: var(--primary-color);
-}
-
-.loading {
-  text-align: center;
-  padding: 2rem;
-  color: var(--gray);
-}
-
-.empty-state {
-  text-align: center;
-  padding: 3rem 0;
-}
-
-.empty-state p {
-  margin-bottom: 1.5rem;
-  font-size: 1.2rem;
-  color: var(--dark-gray);
-}
-
-.surveys-list {
-  display: grid;
-  grid-template-columns: 1fr;
-  gap: 1.5rem;
+  background-color: #f8f9fa;
+  min-height: calc(100vh - 70px);
 }
 
 .survey-card {
-  background-color: var(--white);
-  border-radius: var(--border-radius);
-  box-shadow: var(--box-shadow);
-  padding: 1.5rem;
+  transition: transform 0.2s, box-shadow 0.2s;
+  border-radius: 8px;
+  overflow: hidden;
+  height: 100%;
 }
 
-.survey-card-header {
-  margin-bottom: 1rem;
+.survey-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 10px 20px rgba(0, 0, 0, 0.1) !important;
 }
 
-.survey-card-header h3 {
-  color: var(--primary-color);
-  margin: 0 0 0.5rem 0;
+.empty-state {
+  max-width: 600px;
+  margin: 0 auto;
+  padding: 3rem;
+}
+
+.dropdown-item {
+  padding: 0.5rem 1rem;
+}
+
+.dropdown-item:hover {
+  background-color: #f8f9fa;
+}
+
+.dropdown-item.text-danger:hover {
+  background-color: #f8d7da;
+}
+
+.card-title {
+  font-weight: 600;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+}
+
+.card-text {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
 }
 
 .survey-meta {
-  display: flex;
-  gap: 1rem;
-  font-size: 0.9rem;
-  color: var(--dark-gray);
+  font-size: 0.85rem;
 }
 
-.survey-description {
-  margin-bottom: 1.5rem;
-  color: var(--text-color);
-}
-
-.survey-actions {
-  display: flex;
-  gap: 1rem;
-}
-
-.btn-edit,
-.btn-delete {
-  padding: 0.5rem 1rem;
-  border-radius: var(--border-radius);
-  font-size: 0.9rem;
-  display: inline-flex;
-  align-items: center;
-  cursor: pointer;
-}
-
-.btn-edit {
-  background-color: var(--secondary-color);
-  color: var(--white);
-  text-decoration: none;
-}
-
-.btn-delete {
-  background-color: #f44336;
-  color: var(--white);
-  border: none;
-}
-
-.btn-icon {
-  margin-right: 0.5rem;
-}
-
-.pagination {
+.meta-item {
   display: flex;
   align-items: center;
-  justify-content: center;
-  margin-top: 2rem;
-  gap: 1rem;
 }
 
-.pagination-btn {
-  padding: 0.5rem 1rem;
-  border: 1px solid var(--gray);
-  background-color: var(--white);
-  border-radius: var(--border-radius);
-  cursor: pointer;
-}
-
-.pagination-btn:disabled {
-  opacity: 0.5;
-  cursor: not-allowed;
-}
-
-.pagination-info {
-  color: var(--dark-gray);
-}
-
-/* Modal styles */
-.modal-overlay {
-  position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.5);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  z-index: 1000;
-}
-
-.modal-content {
-  background-color: var(--white);
-  border-radius: var(--border-radius);
-  box-shadow: var(--box-shadow);
-  max-width: 500px;
-  width: 90%;
-  padding: 2rem;
-}
-
-.modal-content h3 {
-  margin-top: 0;
-  color: var(--text-color);
-  margin-bottom: 1rem;
-}
-
-.modal-actions {
-  display: flex;
-  justify-content: flex-end;
-  gap: 1rem;
-  margin-top: 1.5rem;
-}
-
-.btn-cancel {
-  padding: 0.5rem 1rem;
-  border: 1px solid var(--gray);
-  background-color: var(--white);
-  border-radius: var(--border-radius);
-  cursor: pointer;
-}
-
-@media (min-width: 768px) {
-  .surveys-list {
-    grid-template-columns: repeat(2, 1fr);
+@media (max-width: 768px) {
+  .my-surveys-page {
+    padding: 1rem 0;
   }
 }
 </style> 

@@ -44,7 +44,7 @@ func NewServer(cfg *config.Config) (*Server, error) {
 	authMid := authMiddleware.NewAuthMiddleware(cfg.JWTSecretKey)
 
 	// Initialize handler
-	handler := NewUserHandler(userStore)
+	handler := NewUserHandler(userStore, cfg)
 
 	// Create server
 	server := &Server{
@@ -90,23 +90,24 @@ func (s *Server) SetupRoutes() http.Handler {
 		r.Use(s.authMid.Authenticate)
 
 		// User profile routes
-		r.Route("/users", func(r chi.Router) {
-			// Get user by ID - requires the user to be the owner or an admin
-			r.With(s.authMid.RequireOwnerOrAdmin).Get("/{id}", s.handler.GetUserHandler)
+		// Path: /{id} (from /api/v1/users/{id})
+		r.With(s.authMid.RequireOwnerOrAdmin).Get("/{id}", s.handler.GetUserHandler)
+		// Path: /{id} (from /api/v1/users/{id})
+		r.With(s.authMid.RequireOwnerOrAdmin).Put("/{id}", s.handler.UpdateUserHandler)
 
-			// Update user - requires the user to be the owner or an admin
-			r.With(s.authMid.RequireOwnerOrAdmin).Put("/{id}", s.handler.UpdateUserHandler)
+		// Path: /{id}/surveys (from /api/v1/users/{id}/surveys)
+		// Authenticate middleware is already applied by the parent group
+		r.Get("/{id}/surveys", s.handler.GetUserSurveysHandler)
 
-			// Admin-only routes
-			r.Group(func(r chi.Router) {
-				r.Use(s.authMid.RequireAdmin)
+		// Admin-only routes
+		r.Group(func(adminRouter chi.Router) {
+			adminRouter.Use(s.authMid.RequireAdmin)
 
-				// List all users - admin only
-				r.Get("/", s.handler.ListUsersHandler)
+			// Path: / (from /api/v1/users/) - List all users - admin only
+			adminRouter.Get("/", s.handler.ListUsersHandler)
 
-				// Update user role - admin only
-				r.Put("/{id}/role", s.handler.UpdateRoleHandler)
-			})
+			// Path: /{id}/role (from /api/v1/users/{id}/role) - Update user role - admin only
+			adminRouter.Put("/{id}/role", s.handler.UpdateRoleHandler)
 		})
 	})
 

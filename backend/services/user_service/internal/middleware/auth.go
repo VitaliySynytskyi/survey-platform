@@ -3,12 +3,19 @@ package middleware
 import (
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"strings"
 
 	"github.com/VitaliySynytskyi/survey-platform/backend/services/user_service/internal/domain"
 	"github.com/golang-jwt/jwt/v5"
 )
+
+// contextKey is a custom type for context keys to avoid collisions
+type contextKey string
+
+// UserClaimsKey is the key for storing UserClaims in context
+const UserClaimsKey contextKey = "userClaims"
 
 // AuthMiddleware is a middleware that validates JWT tokens
 type AuthMiddleware struct {
@@ -27,6 +34,8 @@ func (m *AuthMiddleware) Authenticate(next http.Handler) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// Extract token from Authorization header
 		authHeader := r.Header.Get("Authorization")
+		log.Printf("[AuthMiddleware - user_service] Received Authorization header: %s", authHeader)
+
 		if authHeader == "" {
 			http.Error(w, "Authorization header is required", http.StatusUnauthorized)
 			return
@@ -45,6 +54,7 @@ func (m *AuthMiddleware) Authenticate(next http.Handler) http.Handler {
 		// Parse and validate the token
 		claims, err := m.validateToken(tokenString)
 		if err != nil {
+			log.Printf("[AuthMiddleware - user_service] Token validation error: %v", err)
 			http.Error(w, "Invalid token: "+err.Error(), http.StatusUnauthorized)
 			return
 		}
@@ -62,12 +72,12 @@ func (m *AuthMiddleware) Authenticate(next http.Handler) http.Handler {
 			return
 		}
 
-		// Add user ID and role to context
-		ctx := r.Context()
-		ctx = domain.ContextWithUserClaims(ctx, domain.UserClaims{
+		// Add user ID and role to context using domain.ContextWithUserClaims
+		userClaimsForContext := domain.UserClaims{
 			ID:   userID,
 			Role: domain.Role(role),
-		})
+		}
+		ctx := domain.ContextWithUserClaims(r.Context(), userClaimsForContext)
 
 		// Call the next handler with the updated context
 		next.ServeHTTP(w, r.WithContext(ctx))
@@ -133,6 +143,9 @@ func (m *AuthMiddleware) RequireOwnerOrAdmin(next http.Handler) http.Handler {
 
 // validateToken validates a JWT token
 func (m *AuthMiddleware) validateToken(tokenString string) (jwt.MapClaims, error) {
+	log.Printf("[AuthMiddleware - user_service] Validating token: %s", tokenString)
+	log.Printf("[AuthMiddleware - user_service] Using secret key: %s", m.secretKey)
+
 	// Parse the token
 	token, err := jwt.Parse(tokenString, func(token *jwt.Token) (interface{}, error) {
 		// Validate the signing method
@@ -143,18 +156,21 @@ func (m *AuthMiddleware) validateToken(tokenString string) (jwt.MapClaims, error
 	})
 
 	if err != nil {
+		log.Printf("[AuthMiddleware - user_service] jwt.Parse error: %v", err)
 		return nil, err
 	}
 
 	// Validate token and extract claims
 	if claims, ok := token.Claims.(jwt.MapClaims); ok && token.Valid {
 		// Check token type (should be "access")
-		if tokenType, ok := claims["token_type"].(string); !ok || tokenType != "access" {
-			return nil, errors.New("invalid token type")
+		if tokenType, typeOk := claims["token_type"].(string); !typeOk || tokenType != "access" {
+			log.Printf("[AuthMiddleware - user_service] Invalid token type: expected 'access', got '%s'", tokenType)
+			return nil, errors.New("invalid token type, expected access token")
 		}
-
+		log.Printf("[AuthMiddleware - user_service] Token validated successfully. Claims Sub: %s, Role: %s, Type: %s", claims["sub"], claims["role"], claims["token_type"])
 		return claims, nil
 	}
 
+	log.Println("[AuthMiddleware - user_service] Token claims invalid or token not valid")
 	return nil, errors.New("invalid token")
 }

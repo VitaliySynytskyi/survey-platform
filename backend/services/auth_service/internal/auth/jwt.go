@@ -180,6 +180,21 @@ func (tm *TokenManager) RefreshTokens(refreshTokenString string) (*domain.TokenR
 	return tm.GenerateTokenPair(user)
 }
 
+// InvalidateRefreshToken adds a refresh token to the blacklist.
+// This is typically called during logout.
+func (tm *TokenManager) InvalidateRefreshToken(refreshTokenString string) error {
+	// We could try to parse the token to get its exact expiry for the blacklist duration,
+	// but for simplicity and to ensure it's blacklisted for its potential full original lifetime,
+	// we use tm.refreshExpiry. If the token is invalid/malformed, parsing would fail.
+	// Adding it directly to the blacklist without full validation is generally safe for logout,
+	// as the goal is to prevent its future use.
+	if refreshTokenString == "" {
+		return errors.New("refresh token string cannot be empty")
+	}
+	tm.blacklist.Add(refreshTokenString, tm.refreshExpiry) // Blacklist for the standard refresh token lifetime
+	return nil
+}
+
 // RevokeTokens додає access і refresh токени до чорного списку
 // Викликається при виході користувача з системи (logout)
 func (tm *TokenManager) RevokeTokens(accessToken, refreshToken string) {

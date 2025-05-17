@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
 	"net/http/httputil"
 	"net/url"
@@ -49,6 +50,19 @@ func NewServiceProxy(serviceName string, serviceConfig config.ServiceConfig, cir
 				newURL, _ := url.Parse(discoveredURL)
 				req.URL.Scheme = newURL.Scheme
 				req.URL.Host = newURL.Host
+			} else {
+				// Fallback to direct service connection
+				// Parse original URL to maintain the correct port
+				originalURL, err := url.Parse(serviceConfig.URL)
+				if err == nil {
+					req.URL.Scheme = originalURL.Scheme
+					req.URL.Host = originalURL.Host
+				} else {
+					// Last resort fallback with default port
+					log.Printf("Warning: Could not parse service URL for %s, using default", serviceName)
+					req.URL.Scheme = "http"
+					req.URL.Host = fmt.Sprintf("%s_service:8080", serviceName)
+				}
 			}
 		}
 

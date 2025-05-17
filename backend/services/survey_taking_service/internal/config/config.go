@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 )
@@ -33,8 +34,13 @@ type RabbitMQConfig struct {
 
 // MongoDBConfig holds the configuration for MongoDB
 type MongoDBConfig struct {
-	URI      string
-	Database string
+	Host       string
+	Port       string
+	User       string
+	Password   string
+	Database   string
+	AuthSource string
+	URI        string
 }
 
 // ConsulConfig holds the configuration for Consul
@@ -45,23 +51,50 @@ type ConsulConfig struct {
 
 // Load loads the configuration from environment variables
 func Load() *Config {
+	mongoHost := getEnv("MONGO_HOST", "localhost")
+	mongoPort := getEnv("MONGO_PORT", "27017")
+	mongoUser := getEnv("MONGO_USER", "")
+	mongoPassword := getEnv("MONGO_PASSWORD", "")
+	mongoDatabase := getEnv("MONGO_DB", "survey_platform")
+	mongoAuthSource := getEnv("MONGO_AUTH_SOURCE", "admin")
+
+	// Build MongoDB URI
+	var mongoURI string
+	if mongoUser != "" && mongoPassword != "" {
+		mongoURI = fmt.Sprintf("mongodb://%s:%s@%s:%s/%s?authSource=%s",
+			mongoUser, mongoPassword, mongoHost, mongoPort, mongoDatabase, mongoAuthSource)
+	} else {
+		mongoURI = fmt.Sprintf("mongodb://%s:%s/%s",
+			mongoHost, mongoPort, mongoDatabase)
+	}
+
+	// Allow overriding the built URI with a complete URI
+	if uri := getEnv("MONGODB_URI", ""); uri != "" {
+		mongoURI = uri
+	}
+
 	return &Config{
 		Server: ServerConfig{
-			Port: getEnv("SERVER_PORT", "8084"),
+			Port: getEnv("SERVER_PORT", "8083"),
 			Host: getEnv("SERVER_HOST", "0.0.0.0"),
 		},
 		RabbitMQ: RabbitMQConfig{
 			Host:       getEnv("RABBITMQ_HOST", "localhost"),
 			Port:       getEnv("RABBITMQ_PORT", "5672"),
-			Username:   getEnv("RABBITMQ_USERNAME", "guest"),
+			Username:   getEnv("RABBITMQ_USER", "guest"),
 			Password:   getEnv("RABBITMQ_PASSWORD", "guest"),
 			Exchange:   getEnv("RABBITMQ_EXCHANGE", "survey_responses"),
 			Queue:      getEnv("RABBITMQ_QUEUE", "survey_responses_queue"),
 			RoutingKey: getEnv("RABBITMQ_ROUTING_KEY", "survey.response"),
 		},
 		MongoDB: MongoDBConfig{
-			URI:      getEnv("MONGODB_URI", "mongodb://localhost:27017"),
-			Database: getEnv("MONGODB_DATABASE", "survey_platform"),
+			Host:       mongoHost,
+			Port:       mongoPort,
+			User:       mongoUser,
+			Password:   mongoPassword,
+			Database:   mongoDatabase,
+			AuthSource: mongoAuthSource,
+			URI:        mongoURI,
 		},
 		Consul: ConsulConfig{
 			Address: getEnv("CONSUL_ADDR", "consul:8500"),

@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"time"
 
 	"github.com/streadway/amqp"
 
@@ -25,10 +26,25 @@ func NewProducer(cfg config.RabbitMQConfig) (*Producer, error) {
 	connStr := fmt.Sprintf("amqp://%s:%s@%s:%s/",
 		cfg.Username, cfg.Password, cfg.Host, cfg.Port)
 
-	// Connect to RabbitMQ
-	conn, err := amqp.Dial(connStr)
+	// Connect to RabbitMQ with retry
+	var conn *amqp.Connection
+	var err error
+
+	maxRetries := 5
+	retryDelay := 3 * time.Second
+
+	for i := 0; i < maxRetries; i++ {
+		conn, err = amqp.Dial(connStr)
+		if err == nil {
+			break
+		}
+		log.Printf("Failed to connect to RabbitMQ (attempt %d/%d): %v. Retrying in %s...",
+			i+1, maxRetries, err, retryDelay)
+		time.Sleep(retryDelay)
+	}
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to connect to RabbitMQ: %w", err)
+		return nil, fmt.Errorf("failed to connect to RabbitMQ after %d attempts: %w", maxRetries, err)
 	}
 
 	// Create channel
@@ -53,6 +69,8 @@ func NewProducer(cfg config.RabbitMQConfig) (*Producer, error) {
 		conn.Close()
 		return nil, fmt.Errorf("failed to declare an exchange: %w", err)
 	}
+
+	log.Printf("Successfully connected to RabbitMQ at %s:%s", cfg.Host, cfg.Port)
 
 	return &Producer{
 		conn:    conn,

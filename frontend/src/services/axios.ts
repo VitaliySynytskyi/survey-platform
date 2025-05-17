@@ -1,9 +1,13 @@
 import axios from 'axios'
 import { useAuthStore } from '@/stores/auth'
 
+// Determine the base URL
+const baseURL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:8000/api/v1';
+console.log("API Client initialized with baseURL:", baseURL);
+
 // Create Axios instance
 const apiClient = axios.create({
-  baseURL: import.meta.env.VITE_API_BASE_URL || 'http://localhost:8080/api/v1',
+  baseURL: baseURL,
   headers: {
     'Content-Type': 'application/json'
   }

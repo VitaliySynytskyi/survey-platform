@@ -59,14 +59,21 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const response = await authService.login(email, password)
       
-      user.value = response.user
-      accessToken.value = response.accessToken
-      refreshToken.value = response.refreshToken
+      // Store tokens from response
+      accessToken.value = response.access_token
+      refreshToken.value = response.refresh_token
 
-      // Save to localStorage
-      localStorage.setItem('user', JSON.stringify(response.user))
-      localStorage.setItem('accessToken', response.accessToken)
-      localStorage.setItem('refreshToken', response.refreshToken)
+      // Save tokens to localStorage
+      localStorage.setItem('accessToken', response.access_token)
+      localStorage.setItem('refreshToken', response.refresh_token)
+
+      // Fetch user profile with the access token
+      try {
+        await fetchUser()
+      } catch (userError) {
+        console.error('Failed to fetch user profile:', userError)
+        // Continue with login even if profile fetch fails
+      }
 
       return true
     } catch (e: any) {
@@ -80,13 +87,15 @@ export const useAuthStore = defineStore('auth', () => {
   const logout = async () => {
     loading.value = true
     error.value = null
+    const currentRefreshToken = refreshToken.value; // Get refreshToken before clearing
 
     try {
-      if (accessToken.value) {
-        await authService.logout(accessToken.value)
-      }
+      // Pass the refresh token to the authService.logout method
+      // The authService.logout method now expects the refresh token
+      await authService.logout(currentRefreshToken) 
     } catch (e) {
       console.error('Logout error:', e)
+      // Even if logout API call fails, proceed to clear local state and storage
     } finally {
       // Reset state
       user.value = null
@@ -113,12 +122,12 @@ export const useAuthStore = defineStore('auth', () => {
     try {
       const response = await authService.refreshToken(refreshToken.value)
       
-      accessToken.value = response.accessToken
-      refreshToken.value = response.refreshToken
+      accessToken.value = response.access_token
+      refreshToken.value = response.refresh_token
 
       // Update localStorage
-      localStorage.setItem('accessToken', response.accessToken)
-      localStorage.setItem('refreshToken', response.refreshToken)
+      localStorage.setItem('accessToken', response.access_token)
+      localStorage.setItem('refreshToken', response.refresh_token)
 
       return true
     } catch (e: any) {

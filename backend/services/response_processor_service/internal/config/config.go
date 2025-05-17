@@ -1,6 +1,7 @@
 package config
 
 import (
+	"fmt"
 	"os"
 	"strconv"
 )
@@ -26,9 +27,14 @@ type RabbitMQConfig struct {
 
 // MongoDBConfig holds the configuration for MongoDB
 type MongoDBConfig struct {
-	URI        string
+	Host       string
+	Port       string
+	User       string
+	Password   string
 	Database   string
 	Collection string
+	AuthSource string
+	URI        string
 }
 
 // ServerConfig holds the configuration for the HTTP server
@@ -38,11 +44,34 @@ type ServerConfig struct {
 
 // Load loads the configuration from environment variables
 func Load() *Config {
+	mongoHost := getEnv("MONGO_HOST", "localhost")
+	mongoPort := getEnv("MONGO_PORT", "27017")
+	mongoUser := getEnv("MONGO_USER", "")
+	mongoPassword := getEnv("MONGO_PASSWORD", "")
+	mongoDatabase := getEnv("MONGO_DB", "survey_platform")
+	mongoCollection := getEnv("MONGODB_COLLECTION", "responses")
+	mongoAuthSource := getEnv("MONGO_AUTH_SOURCE", "admin")
+
+	// Build MongoDB URI
+	var mongoURI string
+	if mongoUser != "" && mongoPassword != "" {
+		mongoURI = fmt.Sprintf("mongodb://%s:%s@%s:%s/%s?authSource=%s",
+			mongoUser, mongoPassword, mongoHost, mongoPort, mongoDatabase, mongoAuthSource)
+	} else {
+		mongoURI = fmt.Sprintf("mongodb://%s:%s/%s",
+			mongoHost, mongoPort, mongoDatabase)
+	}
+
+	// Allow overriding the built URI with a complete URI
+	if uri := getEnv("MONGODB_URI", ""); uri != "" {
+		mongoURI = uri
+	}
+
 	return &Config{
 		RabbitMQ: RabbitMQConfig{
 			Host:          getEnv("RABBITMQ_HOST", "localhost"),
 			Port:          getEnv("RABBITMQ_PORT", "5672"),
-			Username:      getEnv("RABBITMQ_USERNAME", "guest"),
+			Username:      getEnv("RABBITMQ_USER", "guest"),
 			Password:      getEnv("RABBITMQ_PASSWORD", "guest"),
 			Exchange:      getEnv("RABBITMQ_EXCHANGE", "survey_responses"),
 			Queue:         getEnv("RABBITMQ_QUEUE", "survey_responses_queue"),
@@ -50,9 +79,14 @@ func Load() *Config {
 			PrefetchCount: getEnvAsInt("RABBITMQ_PREFETCH_COUNT", 1),
 		},
 		MongoDB: MongoDBConfig{
-			URI:        getEnv("MONGODB_URI", "mongodb://localhost:27017"),
-			Database:   getEnv("MONGODB_DATABASE", "survey_platform"),
-			Collection: getEnv("MONGODB_COLLECTION", "responses"),
+			Host:       mongoHost,
+			Port:       mongoPort,
+			User:       mongoUser,
+			Password:   mongoPassword,
+			Database:   mongoDatabase,
+			Collection: mongoCollection,
+			AuthSource: mongoAuthSource,
+			URI:        mongoURI,
 		},
 		Server: ServerConfig{
 			Port: getEnv("PORT", "8085"),

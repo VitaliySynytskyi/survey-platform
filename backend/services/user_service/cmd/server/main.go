@@ -5,6 +5,7 @@ import (
 	"log"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
 
 	consul "github.com/VitaliySynytskyi/survey-platform/backend/pkg/consul"
@@ -40,15 +41,17 @@ func main() {
 			serviceID := fmt.Sprintf("%s-%s", cfg.ServiceName, uuid.New().String())
 
 			// Register service with Consul
-			serviceAddress := cfg.Server.Host
-			servicePort := cfg.Server.Port
-			healthCheckURL := fmt.Sprintf("http://%s:%s/health", serviceAddress, servicePort)
+			// Use the service name as the address since we're in a Docker container
+			// This will be the DNS name in the Docker network
+			serviceAddress := cfg.ServiceName
+			portNumber, _ := strconv.Atoi(cfg.Server.Port)
+			healthCheckURL := fmt.Sprintf("http://%s:%s/health", serviceAddress, cfg.Server.Port)
 
 			err = consulClient.RegisterService(
 				serviceID,
 				cfg.ServiceName,
 				serviceAddress,
-				3000, // Using port 3000 inside docker container
+				portNumber,
 				[]string{},
 				healthCheckURL,
 			)

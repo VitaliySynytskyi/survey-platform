@@ -10,11 +10,11 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/VitaliySynytskyi/microservices-survey-app/backend/services/survey_service/internal/api"
-	"github.com/VitaliySynytskyi/microservices-survey-app/backend/services/survey_service/internal/api/handlers"
-	"github.com/VitaliySynytskyi/microservices-survey-app/backend/services/survey_service/internal/config"
-	"github.com/VitaliySynytskyi/microservices-survey-app/backend/services/survey_service/internal/store/mongodb"
-	consul "github.com/VitaliySynytskyi/survey-platform/backend/pkg/consul"
+	"github.com/VitaliySynytskyi/survey-platform/backend/pkg/consul"
+	"github.com/VitaliySynytskyi/survey-platform/backend/services/survey_service/internal/api"
+	"github.com/VitaliySynytskyi/survey-platform/backend/services/survey_service/internal/api/handlers"
+	"github.com/VitaliySynytskyi/survey-platform/backend/services/survey_service/internal/config"
+	"github.com/VitaliySynytskyi/survey-platform/backend/services/survey_service/internal/store/mongodb"
 	"github.com/google/uuid"
 	"github.com/joho/godotenv"
 	"go.mongodb.org/mongo-driver/mongo"
@@ -28,7 +28,10 @@ func main() {
 	}
 
 	// Load configuration
-	cfg := config.Load()
+	cfg, err := config.LoadConfig()
+	if err != nil {
+		log.Fatalf("Failed to load configuration: %v", err)
+	}
 
 	// Підключення до MongoDB
 	mongoClient, err := connectToMongoDB(cfg.MongoDB.URI)
@@ -42,7 +45,7 @@ func main() {
 	repository := mongodb.NewSurveyRepository(db)
 
 	// Ініціалізація обробників API
-	surveyHandler := handlers.NewSurveyHandler(repository)
+	surveyHandler := handlers.NewSurveyHandler(repository, mongoClient, cfg.MongoDB.Database)
 
 	// Ініціалізація маршрутизатора
 	router := api.NewRouter(cfg, surveyHandler, mongoClient)
@@ -59,7 +62,7 @@ func main() {
 			serviceID = fmt.Sprintf("%s-%s", cfg.ServiceName, uuid.New().String())
 
 			// Register service with Consul
-			serviceAddress := cfg.Server.Host
+			serviceAddress := cfg.ServiceName
 			servicePort := cfg.Server.Port
 			healthCheckURL := fmt.Sprintf("http://%s:%d/health", serviceAddress, servicePort)
 

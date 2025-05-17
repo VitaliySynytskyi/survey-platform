@@ -3,13 +3,14 @@ package middleware
 import (
 	"log"
 	"net/http"
+	"strconv"
+	"strings"
 	"time"
 
 	"github.com/VitaliySynytskyi/survey-platform/backend/api_gateway/internal/config"
 	"github.com/VitaliySynytskyi/survey-platform/backend/pkg/tracing"
 	"github.com/go-chi/chi/v5"
 	"github.com/go-chi/chi/v5/middleware"
-	"github.com/go-chi/cors"
 	"golang.org/x/time/rate"
 )
 
@@ -47,29 +48,83 @@ func AddLogging(handler http.Handler) http.Handler {
 // AddCORS adds CORS headers
 func AddCORS(handler http.Handler, cfg config.CORSConfig) http.Handler {
 	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		// Set CORS headers
-		w.Header().Set("Access-Control-Allow-Origin", joinStringSlice(cfg.AllowedOrigins))
-		w.Header().Set("Access-Control-Allow-Methods", joinStringSlice(cfg.AllowedMethods))
-		w.Header().Set("Access-Control-Allow-Headers", joinStringSlice(cfg.AllowedHeaders))
-		w.Header().Set("Access-Control-Expose-Headers", joinStringSlice(cfg.ExposedHeaders))
-
-		if cfg.AllowCredentials {
-			w.Header().Set("Access-Control-Allow-Credentials", "true")
-		}
-
-		if cfg.MaxAge > 0 {
-			w.Header().Set("Access-Control-Max-Age", string(cfg.MaxAge))
-		}
-
-		// Handle preflight requests
+		// Handle preflight requests first and return, as these don't go to the backend.
 		if r.Method == http.MethodOptions {
-			w.WriteHeader(http.StatusOK)
+			applyCorsHeaders(w, r, cfg)
+			w.WriteHeader(http.StatusOK) // Or http.StatusNoContent, but OK is common.
 			return
 		}
 
-		// Call the next handler
+		// For actual requests, call the next handler (which includes the proxy).
+		// This will populate w.Header() from the backend via ReverseProxy.copyHeader (which uses Add()).
 		handler.ServeHTTP(w, r)
+
+		// AFTER the backend response headers have been added to 'w',
+		// we enforce our CORS policy by using Set(), which will overwrite.
+		// This ensures the gateway's CORS policy takes precedence and avoids multiple values.
+		applyCorsHeaders(w, r, cfg)
 	})
+}
+
+// applyCorsHeaders applies the CORS headers based on config and request origin.
+// This function should be called to set the final CORS headers on the response.
+func applyCorsHeaders(w http.ResponseWriter, r *http.Request, cfg config.CORSConfig) {
+	requestOrigin := r.Header.Get("Origin")
+	allowedOriginValue := "" // The value to set for Access-Control-Allow-Origin
+
+	// Determine if "*" is an allowed origin
+	starAllowed := false
+	for _, o := range cfg.AllowedOrigins {
+		if o == "*" {
+			starAllowed = true
+			break
+		}
+	}
+
+	// Check if the request's origin is specifically allowed
+	specificOriginMatch := false
+	if requestOrigin != "" {
+		for _, o := range cfg.AllowedOrigins {
+			if o == requestOrigin {
+				allowedOriginValue = requestOrigin
+				specificOriginMatch = true
+				break
+			}
+		}
+	}
+
+	if specificOriginMatch {
+		w.Header().Set("Access-Control-Allow-Origin", allowedOriginValue)
+	} else if starAllowed {
+		// If specific origin not matched, but "*" is allowed, use "*"
+		w.Header().Set("Access-Control-Allow-Origin", "*")
+	}
+	// If neither specific match nor "*", Access-Control-Allow-Origin is not set by this function,
+	// effectively clearing any previous value if w.Header().Set was used by backend (unlikely due to Add)
+	// or leaving it absent if backend didn't send it.
+	// Standard http.Header.Set overwrites, so this behavior is implicitly "clearing" or "setting".
+
+	// Set Vary: Origin if we have allowed origins configured and we might have set ACAO.
+	// This tells caches that the response might vary based on the Origin header.
+	if len(cfg.AllowedOrigins) > 0 && (specificOriginMatch || starAllowed) {
+		w.Header().Add("Vary", "Origin") // Use Add as other parts of the response might also Vary
+	}
+
+	if len(cfg.AllowedMethods) > 0 {
+		w.Header().Set("Access-Control-Allow-Methods", joinStringSlice(cfg.AllowedMethods))
+	}
+	if len(cfg.AllowedHeaders) > 0 {
+		w.Header().Set("Access-Control-Allow-Headers", joinStringSlice(cfg.AllowedHeaders))
+	}
+	if len(cfg.ExposedHeaders) > 0 {
+		w.Header().Set("Access-Control-Expose-Headers", joinStringSlice(cfg.ExposedHeaders))
+	}
+	if cfg.AllowCredentials {
+		w.Header().Set("Access-Control-Allow-Credentials", "true")
+	}
+	if cfg.MaxAge > 0 {
+		w.Header().Set("Access-Control-Max-Age", strconv.Itoa(cfg.MaxAge))
+	}
 }
 
 // AddRateLimiting adds rate limiting middleware
@@ -110,22 +165,7 @@ func (rw *responseWriter) WriteHeader(statusCode int) {
 
 // joinStringSlice joins a slice of strings with a comma
 func joinStringSlice(slice []string) string {
-	if len(slice) == 0 {
-		return ""
-	}
-
-	// For single item, return it
-	if len(slice) == 1 {
-		return slice[0]
-	}
-
-	// Join multiple items with comma
-	result := slice[0]
-	for _, s := range slice[1:] {
-		result += ", " + s
-	}
-
-	return result
+	return strings.Join(slice, ", ")
 }
 
 // RegisterMiddleware реєструє всі middleware
@@ -140,12 +180,6 @@ func RegisterMiddleware(r *chi.Mux, cfg *config.Config) {
 	// Correlation ID middleware for distributed tracing
 	r.Use(tracing.Middleware)
 
-	// CORS configuration
-	r.Use(cors.Handler(cors.Options{
-		AllowedOrigins:   []string{"http://localhost:80", "http://localhost:3000"},
-		AllowedMethods:   []string{"GET", "POST", "PUT", "DELETE", "OPTIONS"},
-		AllowedHeaders:   []string{"Accept", "Authorization", "Content-Type", "X-Correlation-ID"},
-		AllowCredentials: true,
-		MaxAge:           300, // Maximum cache age for preflight options request
-	}))
+	// Note: CORS configuration is now handled by the AddCORS middleware function
+	// Do not register the chi CORS middleware here to avoid conflicts
 }

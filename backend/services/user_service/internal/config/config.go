@@ -10,11 +10,12 @@ import (
 
 // Config holds all configuration for the server
 type Config struct {
-	Server       ServerConfig
-	Database     DatabaseConfig
-	JWTSecretKey string
-	Consul       ConsulConfig
-	ServiceName  string
+	Server           ServerConfig
+	Database         DatabaseConfig
+	JWTSecretKey     string
+	Consul           ConsulConfig
+	ServiceName      string
+	SurveyServiceURL string
 }
 
 // ConsulConfig holds all Consul configuration
@@ -60,12 +61,13 @@ func Load() *Config {
 			DBName:   getEnv("DB_NAME", "survey_platform"),
 			SSLMode:  getEnv("DB_SSL_MODE", "disable"),
 		},
-		JWTSecretKey: getEnv("JWT_SECRET", "your-secret-key-change-in-production"),
+		JWTSecretKey: getEnv("JWT_SECRET_KEY", "your_jwt_secret_key"),
 		Consul: ConsulConfig{
 			Address: getEnv("CONSUL_ADDR", "consul:8500"),
 			Enabled: getBoolEnv("CONSUL_ENABLED", true),
 		},
-		ServiceName: getEnv("SERVICE_NAME", "user_service"),
+		ServiceName:      getEnv("SERVICE_NAME", "user_service"),
+		SurveyServiceURL: getEnv("SURVEY_SERVICE_URL", "http://survey_service:8082"),
 	}
 }
 
