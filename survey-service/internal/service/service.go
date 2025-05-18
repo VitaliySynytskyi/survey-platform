@@ -18,6 +18,7 @@ type SurveyServiceInterface interface {
 	UpdateSurvey(ctx context.Context, survey *models.Survey) error
 	UpdateSurveyWithQuestions(ctx context.Context, survey *models.Survey, questions []models.QuestionUpdateRequest) error
 	DeleteSurvey(ctx context.Context, id int) error
+	UpdateSurveyStatus(ctx context.Context, id int, isActive bool) error
 
 	// Question operations
 	AddQuestion(ctx context.Context, req *models.CreateQuestionRequest) (int, error)
@@ -412,4 +413,9 @@ func (s *SurveyService) UpdateQuestion(ctx context.Context, question *models.Que
 // DeleteQuestion deletes a question
 func (s *SurveyService) DeleteQuestion(ctx context.Context, id int) error {
 	return s.repo.DeleteQuestion(ctx, id)
+}
+
+// UpdateSurveyStatus updates the status of a survey
+func (s *SurveyService) UpdateSurveyStatus(ctx context.Context, id int, isActive bool) error {
+	return s.repo.UpdateSurveyStatus(ctx, id, isActive)
 }

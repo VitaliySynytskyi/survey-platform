@@ -254,25 +254,26 @@
                   </div>
                 </v-window-item>
                 
-                <!-- Export Tab -->
+                <!-- Export Data Tab -->
                 <v-window-item value="export">
-                  <v-card class="pa-4" variant="outlined">
-                    <v-card-title class="text-h6 mb-2">Export Options</v-card-title>
+                  <v-card flat>
+                    <v-card-title>Export Survey Responses</v-card-title>
                     <v-card-text>
-                      <v-radio-group v-model="exportFormat">
-                        <v-radio label="CSV" value="csv"></v-radio>
-                        <v-radio label="Excel (XLSX)" value="xlsx"></v-radio>
-                      </v-radio-group>
-                      
-                      <v-checkbox v-model="exportOptions.includeTimestamp" label="Include submission timestamp"></v-checkbox>
-                      <v-checkbox v-model="exportOptions.includeUserId" label="Include User ID (if available)"></v-checkbox>
-                    </v-card-text>
-                    <v-card-actions>
-                       <v-spacer></v-spacer>
-                      <v-btn color="primary" @click="exportData" :loading="exporting">
-                        Export Data
+                      <p class="mb-4">
+                        Download all responses for this survey in CSV format.
+                      </p>
+                      <v-btn 
+                        color="primary"
+                        @click="exportResponsesCSV"
+                        :loading="exporting"
+                        prepend-icon="mdi-download-box-outline"
+                      >
+                        Export to CSV
                       </v-btn>
-                    </v-card-actions>
+                      <v-alert v-if="exportError" type="error" class="mt-4" closable @click:close="exportError = null">
+                        {{ exportError }}
+                      </v-alert>
+                    </v-card-text>
                   </v-card>
                 </v-window-item>
               </v-window>
@@ -321,6 +322,7 @@
 import { ref, onMounted, computed } from 'vue';
 import { useAuthStore } from '../store/auth';
 import axios from '../utils/axiosConfig';
+import { saveAs } from 'file-saver';
 
 const props = defineProps({
   id: { type: String, required: true }
@@ -348,6 +350,7 @@ const exportOptions = ref({
   includeTimestamp: true,
   includeUserId: true,
 });
+const exportError = ref(null);
 
 const individualResponseHeaders = [
   { title: 'Submission ID', key: 'id' }, // Changed from _id to id based on MongoDB model
@@ -533,46 +536,45 @@ const showSnackbar = (text, color = 'success') => {
   snackbar.value.show = true;
 };
 
-const exportData = async () => {
-    exporting.value = true;
-    try {
-        const response = await axios.get(`/api/v1/surveys/${props.id}/export`, {
-            params: {
-                format: exportFormat.value,
-                includeTimestamp: exportOptions.value.includeTimestamp,
-                includeUserId: exportOptions.value.includeUserId
-            },
-            responseType: 'blob', // Important for file download
-            headers: { Authorization: `Bearer ${authStore.token}` }
-        });
+const exportResponsesCSV = async () => {
+  exporting.value = true;
+  exportError.value = null;
+  try {
+    const response = await axios.get(`/api/v1/surveys/${props.id}/responses/export`, {
+      responseType: 'blob',
+      headers: { Authorization: `Bearer ${authStore.token}` }
+    });
 
-        const disposition = response.headers['content-disposition'];
-        let filename = `survey_${props.id}_responses.${exportFormat.value}`;
-        if (disposition && disposition.indexOf('attachment') !== -1) {
-            const filenameRegex = /filename[^;=\n]*=((['"])(?<filename>(?:(?!\2).)*)\2|(?<filename_iso>[^;\n]*))/i;
-            const matches = filenameRegex.exec(disposition);
-            if (matches && matches.groups && matches.groups.filename) {
-                filename = matches.groups.filename;
-            } else if (matches && matches.groups && matches.groups.filename_iso) {
-                filename = matches.groups.filename_iso; // Handle ISO-8859-1 encoded filenames
-            }
-        }
-
-        const url = window.URL.createObjectURL(new Blob([response.data]));
-        const link = document.createElement('a');
-        link.href = url;
-        link.setAttribute('download', filename);
-        document.body.appendChild(link);
-        link.click();
-        document.body.removeChild(link);
-        window.URL.revokeObjectURL(url);
-        showSnackbar('Data exported successfully!', 'success');
-    } catch (err) {
-        console.error('Error exporting data:', err);
-        const errorText = await err.response?.data?.text(); // Try to get text from blob error
-        showSnackbar(err.response?.data?.error || JSON.parse(errorText)?.error || 'Failed to export data.', 'error');
+    const contentDisposition = response.headers['content-disposition'];
+    let filename = `survey_${props.id}_responses.csv`;
+    if (contentDisposition) {
+      const filenameMatch = contentDisposition.match(/filename[^;=\n]*=((['"]).*?\2|[^;\n]*)/);
+      if (filenameMatch != null && filenameMatch[1]) {
+        filename = filenameMatch[1].replace(/['"]/g, '');
+      }
     }
+
+    saveAs(new Blob(["\uFEFF", response.data], { type: 'text/csv;charset=utf-8;' }), filename);
+
+  } catch (err) {
+    console.error("Error exporting CSV:", err);
+    if (err.response && err.response.status === 204) {
+      exportError.value = "No responses found to export.";
+    } else if (err.response && err.response.data) {
+        try {
+            // If the error response is a blob, try to read it as text for a JSON error message
+            const errorText = await (err.response.data).text();
+            const errorJson = JSON.parse(errorText);
+            exportError.value = `Failed to export CSV: ${errorJson.error || 'Server error'}`;
+        } catch (parseError) {
+            exportError.value = "Failed to export CSV. An unknown error occurred while parsing the error response.";
+        }
+    } else {
+        exportError.value = "Failed to export CSV. An unknown error occurred.";
+    }
+  } finally {
     exporting.value = false;
+  }
 };
 
 onMounted(() => {

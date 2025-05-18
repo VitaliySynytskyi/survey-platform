@@ -86,3 +86,8 @@ type CreateQuestionOptionRequest struct {
 	Text     string `json:"text" binding:"required"`
 	OrderNum int    `json:"order_num"`
 }
+
+// UpdateSurveyStatusRequest represents the data needed to update a survey's active status
+type UpdateSurveyStatusRequest struct {
+	IsActive *bool `json:"is_active" binding:"required"` // Pointer to allow false value
+}

@@ -25,6 +25,9 @@
             </v-card-subtitle>
             <v-card-text>
               <p class="text-body-1">{{ survey.description }}</p>
+              <v-alert v-if="survey.is_active === false" type="warning" density="compact" class="mt-4">
+                This survey is currently inactive.
+              </v-alert>
             </v-card-text>
           </v-card>
         </v-col>
@@ -32,7 +35,7 @@
 
       <v-row>
         <v-col cols="12" md="8" lg="7" class="mx-auto">
-          <v-form @submit.prevent="submitSurvey" ref="form" v-model="valid">
+          <v-form @submit.prevent="submitSurvey" ref="form" v-model="valid" :disabled="survey.is_active === false">
             <v-card class="mb-4 pa-6" v-for="(question, index) in survey.questions" :key="index">
               <div class="d-flex align-center mb-2">
                 <span class="text-h6">{{ index + 1 }}. {{ question.text }}</span>
@@ -144,7 +147,7 @@
                   color="primary"
                   size="large"
                   :loading="submitting"
-                  :disabled="!valid || submitting"
+                  :disabled="!valid || submitting || survey.is_active === false"
                 >
                   Submit Response
                 </v-btn>
@@ -176,7 +179,7 @@
 import { ref, reactive, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '../store/auth';
-import axios from '../utils/axiosConfig';
+import { surveyApi } from '../services/api';
 
 export default {
   name: 'TakeSurvey',
@@ -202,6 +205,7 @@ export default {
       title: '',
       description: '',
       created_by: '',
+      is_active: true, // Assume active by default until fetched
       questions: []
     });
     
@@ -253,25 +257,42 @@ export default {
       ]
     };
     
-    const fetchSurvey = async () => {
+    const fetchSurveyDetails = async () => {
       loading.value = true;
       error.value = '';
-      
       try {
-        // In production, uncomment this
-        const response = await axios.get(`/api/v1/surveys/${props.id}`);
+        const response = await surveyApi.getSurvey(props.id);
         survey.value = response.data;
-        
-        // For development, use mock data - REMOVE THIS
-        // setTimeout(() => {
-        //   survey.value = mockSurvey;
-        //   loading.value = false;
-        // }, 1000);
-        loading.value = false; // Set loading to false after successful fetch
+        if (survey.value && survey.value.is_active === false) {
+          error.value = 'This survey is currently inactive and cannot accept responses.';
+          // Do not proceed to initialize responses if survey is not active
+          loading.value = false; // Stop loading indicator
+          return; // Stop further execution
+        }
+        // Initialize responses object based on fetched questions
+        if (survey.value && survey.value.questions) {
+          survey.value.questions.forEach(q => {
+            if (q.type === 'checkbox') {
+              checkboxResponses[q.id] = []; // Initialize as array for checkboxes
+              responses[q.id] = []; // Also keep a parallel structure in responses if needed, or solely use checkboxResponses
+            } else {
+              responses[q.id] = null; // Default for others
+            }
+          });
+        }
       } catch (err) {
-        console.error('Error fetching survey:', err);
-        error.value = 'Failed to load survey. It may not exist or has been removed.';
-        loading.value = false;
+        console.error('Error fetching survey details:', err);
+        if (err.response?.status === 404) {
+          error.value = 'Survey not found. It may have been deleted or the link is incorrect.';
+        } else {
+          error.value = 'Failed to load survey. Please try again later.';
+        }
+      } finally {
+        if (error.value === 'This survey is currently not active and cannot accept responses.') {
+          // If error is due to inactive survey, loading is already set to false
+        } else {
+          loading.value = false;
+        }
       }
     };
     
@@ -329,7 +350,7 @@ export default {
       
       try {
         // In production, uncomment this
-        await axios.post('/api/v1/responses', submission, {
+        await surveyApi.submitResponse(submission, {
           headers: authStore.isAuthenticated ? { Authorization: `Bearer ${authStore.token}` } : {}
         });
         
@@ -346,7 +367,7 @@ export default {
     };
     
     onMounted(() => {
-      fetchSurvey();
+      fetchSurveyDetails();
     });
     
     return {

@@ -164,6 +164,41 @@ func (h *SurveyHandler) DeleteSurvey(c *gin.Context) {
 	c.JSON(http.StatusOK, gin.H{"message": "Survey deleted successfully"})
 }
 
+// UpdateSurveyStatus handles PATCH /api/v1/surveys/:id/status request
+func (h *SurveyHandler) UpdateSurveyStatus(c *gin.Context) {
+	id, err := strconv.Atoi(c.Param("id"))
+	if err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid survey ID"})
+		return
+	}
+
+	var req models.UpdateSurveyStatusRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
+		return
+	}
+
+	if req.IsActive == nil {
+		c.JSON(http.StatusBadRequest, gin.H{"error": "is_active field is required"})
+		return
+	}
+
+	// TODO: Validate creator ID from JWT matches existingSurvey.CreatorID
+	// You might want to fetch the survey first to check ownership before updating status
+
+	if err := h.surveyService.UpdateSurveyStatus(c.Request.Context(), id, *req.IsActive); err != nil {
+		log.Printf("Error updating survey status: %v", err)
+		if err.Error() == "survey not found for status update" { // Check for specific error from repository
+			c.JSON(http.StatusNotFound, gin.H{"error": "Survey not found"})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to update survey status"})
+		}
+		return
+	}
+
+	c.JSON(http.StatusOK, gin.H{"message": "Survey status updated successfully"})
+}
+
 // AddQuestion handles POST /api/v1/surveys/:id/questions request
 func (h *SurveyHandler) AddQuestion(c *gin.Context) {
 	surveyID, err := strconv.Atoi(c.Param("id"))

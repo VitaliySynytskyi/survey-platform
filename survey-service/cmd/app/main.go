@@ -91,6 +91,7 @@ func main() {
 			surveys.GET("/:id", surveyHandler.GetSurvey)
 			surveys.PUT("/:id", surveyHandler.UpdateSurvey)
 			surveys.DELETE("/:id", surveyHandler.DeleteSurvey)
+			surveys.PATCH("/:id/status", surveyHandler.UpdateSurveyStatus)
 
 			// Question routes
 			surveys.POST("/:id/questions", surveyHandler.AddQuestion)

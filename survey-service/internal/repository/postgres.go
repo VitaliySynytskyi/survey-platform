@@ -256,6 +256,26 @@ func (r *PostgresRepository) UpdateSurveyTx(ctx context.Context, tx pgx.Tx, surv
 	return nil
 }
 
+// UpdateSurveyStatus updates only the is_active field of a survey
+func (r *PostgresRepository) UpdateSurveyStatus(ctx context.Context, id int, isActive bool) error {
+	query := `
+		UPDATE surveys
+		SET is_active = $1, updated_at = CURRENT_TIMESTAMP
+		WHERE id = $2
+		RETURNING updated_at
+	`
+	var updatedAt time.Time
+	err := r.db.QueryRow(ctx, query, isActive, id).Scan(&updatedAt)
+	if err != nil {
+		if errors.Is(err, pgx.ErrNoRows) {
+			return errors.New("survey not found for status update")
+		}
+		return err
+	}
+	// We don't need to update the survey object in this context, just confirm the update
+	return nil
+}
+
 // DeleteSurvey deletes a survey from the database
 func (r *PostgresRepository) DeleteSurvey(ctx context.Context, id int) error {
 	// This will cascade delete questions and question options due to foreign key constraints

@@ -139,6 +139,7 @@
 import { ref, onMounted, computed } from 'vue';
 import { useAuthStore } from '../store/auth';
 import axios from '../utils/axiosConfig';
+import { surveyApi } from '../services/api';
 
 export default {
   name: 'Dashboard',
@@ -159,55 +160,58 @@ export default {
     const fetchSurveys = async () => {
       loading.value = true;
       error.value = '';
-      
       try {
-        // In production, uncomment this and comment the mockSurveys assignment
-        const response = await axios.get('/api/v1/surveys', {
-          headers: { Authorization: `Bearer ${authStore.token}` }
-        });
+        const response = await surveyApi.getSurveys();
         surveys.value = response.data;
-        
-        // For development, using mock data - REMOVE THIS
-        // surveys.value = mockSurveys;
       } catch (err) {
         console.error('Error fetching surveys:', err);
-        error.value = 'Failed to load surveys. Please try again later.';
+        const errorMessage = err.response?.data?.error || 'Failed to load surveys. Please try again later.';
+        if (err.response?.status === 401) {
+            error.value = 'Your session may have expired. Please try logging out and logging back in.';
+        } else {
+            error.value = errorMessage;
+        }
       } finally {
         loading.value = false;
       }
     };
 
     const formatDate = (dateString) => {
+      if (!dateString) return 'N/A';
       const options = { year: 'numeric', month: 'short', day: 'numeric' };
-      return new Date(dateString).toLocaleDateString(undefined, options);
+      try {
+        return new Date(dateString).toLocaleDateString(undefined, options);
+      } catch (e) {
+        return dateString;
+      }
     };
 
     const copyShareLink = (surveyId) => {
-      const link = `${window.location.origin}/surveys/${surveyId}`;
+      const link = `${window.location.origin}/surveys/take/${surveyId}`;
       navigator.clipboard.writeText(link).then(() => {
-        showSnackbar('Survey link copied to clipboard!', 'success');
+        showSnackbar('Survey share link copied to clipboard!', 'success');
+      }).catch(err => {
+        console.error('Failed to copy share link:', err);
+        showSnackbar('Failed to copy link. Please try again.', 'error');
       });
     };
 
     const toggleStatus = async (survey) => {
+      const originalStatus = survey.is_active;
+      const newStatus = !survey.is_active;
+      survey.is_active = newStatus;
+      
       try {
-        // In production, uncomment this
-        await axios.patch(`/api/v1/surveys/${survey.id}`, {
-          is_active: !survey.is_active
-        }, {
-          headers: { Authorization: `Bearer ${authStore.token}` }
-        });
-        
-        // For development, just toggle locally - REMOVE THIS
-        survey.is_active = !survey.is_active;
-        
+        await surveyApi.updateSurveyStatus(survey.id, newStatus);
         showSnackbar(
-          `Survey ${survey.is_active ? 'activated' : 'deactivated'} successfully`, 
+          `Survey "${survey.title}" ${newStatus ? 'activated' : 'deactivated'} successfully.`,
           'success'
         );
       } catch (err) {
-        console.error('Error updating survey:', err);
-        showSnackbar('Failed to update survey status', 'error');
+        survey.is_active = originalStatus;
+        console.error('Error updating survey status:', err);
+        const errMessage = err.response?.data?.error || 'Failed to update survey status.';
+        showSnackbar(errMessage, 'error');
       }
     };
 
@@ -218,25 +222,19 @@ export default {
 
     const deleteSurvey = async () => {
       if (!selectedSurvey.value) return;
-      
       deleteLoading.value = true;
-      
       try {
-        // In production, uncomment this
-        await axios.delete(`/api/v1/surveys/${selectedSurvey.value.id}`, {
-          headers: { Authorization: `Bearer ${authStore.token}` }
-        });
-        
-        // For development, just remove locally - REMOVE THIS
+        await surveyApi.deleteSurvey(selectedSurvey.value.id);
         surveys.value = surveys.value.filter(s => s.id !== selectedSurvey.value.id);
-        
-        showSnackbar('Survey deleted successfully', 'success');
+        showSnackbar(`Survey "${selectedSurvey.value.title}" deleted successfully.`, 'success');
         deleteDialog.value = false;
       } catch (err) {
         console.error('Error deleting survey:', err);
-        showSnackbar('Failed to delete survey', 'error');
+        const errMessage = err.response?.data?.error || 'Failed to delete survey.';
+        showSnackbar(errMessage, 'error');
       } finally {
         deleteLoading.value = false;
+        selectedSurvey.value = null;
       }
     };
 
@@ -248,23 +246,46 @@ export default {
       };
     };
 
-    onMounted(() => {
-      fetchSurveys();
+    onMounted(async () => {
+      if (authStore.token) {
+        loading.value = true;
+        error.value = '';
+        try {
+          await authStore.fetchUser();
+          if (authStore.isAuthenticated) {
+            await fetchSurveys();
+          } else {
+            error.value = 'Your session is invalid. Please log in again.';
+          }
+        } catch (err) {
+          console.error('Dashboard setup error:', err);
+          if (!error.value) {
+             error.value = 'Failed to initialize dashboard. Please try logging in again.';
+          }
+        } finally {
+          loading.value = false;
+        }
+      } else {
+        error.value = 'You are not authenticated. Please log in.';
+        loading.value = false; 
+      }
     });
 
     return {
       surveys,
       loading,
       error,
-      deleteDialog,
-      selectedSurvey,
-      deleteLoading,
-      snackbar,
       formatDate,
       copyShareLink,
       toggleStatus,
       confirmDelete,
-      deleteSurvey
+      deleteDialog,
+      selectedSurvey,
+      deleteSurvey,
+      deleteLoading,
+      snackbar,
+      showSnackbar,
+      authStore
     };
   }
 };

@@ -50,7 +50,7 @@ func setupRouter(config Config) *gin.Engine {
 		c.Writer.Header().Set("Access-Control-Allow-Origin", "*")
 		c.Writer.Header().Set("Access-Control-Allow-Credentials", "true")
 		c.Writer.Header().Set("Access-Control-Allow-Headers", "Content-Type, Content-Length, Accept-Encoding, X-CSRF-Token, Authorization, accept, origin, Cache-Control, X-Requested-With")
-		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE")
+		c.Writer.Header().Set("Access-Control-Allow-Methods", "POST, OPTIONS, GET, PUT, DELETE, PATCH")
 
 		if c.Request.Method == "OPTIONS" {
 			c.AbortWithStatus(204)
@@ -90,10 +90,11 @@ func setupRouter(config Config) *gin.Engine {
 		// Protected routes for survey management (CRUD on surveys themselves)
 		protectedSurveyOpsRoutes := surveyRoutes.Group("") // For POST, PUT, DELETE on /api/v1/surveys and /api/v1/surveys/:id
 		protectedSurveyOpsRoutes.Use(jwtAuthMiddleware(config.JWTSecret))
-		protectedSurveyOpsRoutes.POST("", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys"))       // Create survey
-		protectedSurveyOpsRoutes.PUT("/:id", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys"))    // Update survey
-		protectedSurveyOpsRoutes.PATCH("/:id", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys"))  // Partially update survey (e.g. toggle active)
-		protectedSurveyOpsRoutes.DELETE("/:id", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys")) // Delete survey
+		protectedSurveyOpsRoutes.POST("", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys"))             // Create survey
+		protectedSurveyOpsRoutes.PUT("/:id", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys"))          // Update survey
+		protectedSurveyOpsRoutes.PATCH("/:id", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys"))        // Partially update survey (e.g. toggle active)
+		protectedSurveyOpsRoutes.PATCH("/:id/status", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys")) // Added for status update
+		protectedSurveyOpsRoutes.DELETE("/:id", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys"))       // Delete survey
 		// Get all surveys for the user (Dashboard)
 		protectedSurveyOpsRoutes.GET("", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys"))
 
@@ -104,6 +105,9 @@ func setupRouter(config Config) *gin.Engine {
 		// The createReverseProxy function uses c.Request.URL.Path, so it should forward /api/v1/surveys/:id/responses as is.
 		surveyRoutes.GET("/:id/responses", jwtAuthMiddleware(config.JWTSecret), createReverseProxy(config.ResponseServiceURL, "/api/v1/surveys")) // Note: serviceBasePath for proxy might be just /api/v1 or similar if backend expects it trimmed.
 		// For now, assuming response-service router handles /api/v1/surveys/:surveyId/responses
+
+		// Protected route for exporting responses for a specific survey
+		surveyRoutes.GET("/:id/responses/export", jwtAuthMiddleware(config.JWTSecret), createReverseProxy(config.ResponseServiceURL, "/api/v1/surveys"))
 	}
 
 	// Questions routes - these were proxied to survey-service, ensure they are still relevant or adjust

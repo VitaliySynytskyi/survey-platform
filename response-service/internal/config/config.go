@@ -13,6 +13,7 @@ type Config struct {
 	MongoDBURI         string
 	MongoDBName        string
 	ResponseCollection string
+	SurveyServiceURL   string
 }
 
 // New creates a new Config instance
@@ -26,6 +27,7 @@ func New() *Config {
 		MongoDBURI:         getEnv("MONGO_URI", "mongodb://localhost:27017"),
 		MongoDBName:        getEnv("MONGO_DATABASE", "survey_responses_db"),
 		ResponseCollection: getEnv("MONGO_RESPONSE_COLLECTION", "responses"),
+		SurveyServiceURL:   getEnv("SURVEY_SERVICE_URL", "http://survey-service:8082"),
 	}
 }
 

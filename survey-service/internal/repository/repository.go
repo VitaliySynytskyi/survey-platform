@@ -20,6 +20,7 @@ type SurveyRepositoryInterface interface {
 	GetSurveys(ctx context.Context, creatorID int) ([]*models.Survey, error)
 	UpdateSurvey(ctx context.Context, survey *models.Survey) error
 	DeleteSurvey(ctx context.Context, id int) error
+	UpdateSurveyStatus(ctx context.Context, id int, isActive bool) error
 
 	// Question operations (non-transactional)
 	CreateQuestion(ctx context.Context, question *models.Question) (int, error)

@@ -37,7 +37,7 @@ func main() {
 	}()
 
 	// Initialize service
-	responseService := service.NewResponseService(mongoRepo)
+	responseService := service.NewResponseService(mongoRepo, cfg.SurveyServiceURL)
 
 	// Initialize handler
 	responseHandler := handlers.NewResponseHandler(responseService)
@@ -63,6 +63,9 @@ func main() {
 		// For now, as per SurveyResponses.vue, the call is to /api/v1/surveys/:id/responses,
 		// so this route should be registered here if response-service handles it directly.
 		api.GET("/surveys/:surveyId/responses", responseHandler.GetSurveyResponsesHandler)
+
+		// Route for exporting survey responses as CSV
+		api.GET("/surveys/:surveyId/responses/export", responseHandler.ExportSurveyResponsesCSV)
 
 		// Remove old placeholder routes for /responses if they were here
 	}
