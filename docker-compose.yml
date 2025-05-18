@@ -1,0 +1,143 @@
+version: '3.8'
+
+services:
+  postgres:
+    image: postgres:13-alpine
+    container_name: survey_postgres
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: survey_db
+    ports:
+      - "5432:5432"
+    volumes:
+      - ./docker/db/postgres/init:/docker-entrypoint-initdb.d
+      - postgres_data:/var/lib/postgresql/data
+    networks:
+      - survey_network
+
+  mongodb:
+    image: mongo:5.0
+    container_name: survey_mongodb
+    environment:
+      MONGO_INITDB_ROOT_USERNAME: mongo
+      MONGO_INITDB_ROOT_PASSWORD: mongo
+    ports:
+      - "27017:27017"
+    volumes:
+      - mongo_data:/data/db
+    networks:
+      - survey_network
+
+  rabbitmq:
+    image: rabbitmq:3-management
+    container_name: survey_rabbitmq
+    environment:
+      RABBITMQ_DEFAULT_USER: rabbitmq
+      RABBITMQ_DEFAULT_PASS: rabbitmq
+    ports:
+      - "5672:5672"
+      - "15672:15672"
+    networks:
+      - survey_network
+
+  auth-service:
+    build:
+      context: ./auth-service
+      dockerfile: Dockerfile
+    container_name: survey_auth_service
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=survey_db
+      - JWT_SECRET=your_jwt_secret_key
+      - PORT=8081
+    ports:
+      - "8081:8081"
+    depends_on:
+      - postgres
+    networks:
+      - survey_network
+    restart: on-failure
+
+  survey-service:
+    build:
+      context: ./survey-service
+      dockerfile: Dockerfile
+    container_name: survey_survey_service
+    environment:
+      - DB_HOST=postgres
+      - DB_PORT=5432
+      - DB_USER=postgres
+      - DB_PASSWORD=postgres
+      - DB_NAME=survey_db
+      - PORT=8082
+    ports:
+      - "8082:8082"
+    depends_on:
+      - postgres
+      - auth-service
+    networks:
+      - survey_network
+    restart: on-failure
+
+  response-service:
+    build:
+      context: ./response-service
+      dockerfile: Dockerfile
+    container_name: survey_response_service
+    environment:
+      - MONGO_URI=mongodb://mongo:mongo@mongodb:27017
+      - MONGO_DB=survey_responses
+      - PORT=8083
+    ports:
+      - "8083:8083"
+    depends_on:
+      - mongodb
+      - auth-service
+      - survey-service
+    networks:
+      - survey_network
+    restart: on-failure
+
+  api-gateway:
+    build:
+      context: ./api-gateway
+      dockerfile: Dockerfile
+    container_name: survey_api_gateway
+    environment:
+      - AUTH_SERVICE_URL=http://auth-service:8081
+      - SURVEY_SERVICE_URL=http://survey-service:8082
+      - RESPONSE_SERVICE_URL=http://response-service:8083
+      - JWT_SECRET=your_jwt_secret_key
+      - PORT=8080
+    ports:
+      - "8080:8080"
+    depends_on:
+      - auth-service
+      - survey-service
+      - response-service
+    networks:
+      - survey_network
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    container_name: survey_frontend
+    ports:
+      - "80:80"
+    depends_on:
+      - api-gateway
+    networks:
+      - survey_network
+
+networks:
+  survey_network:
+    driver: bridge
+
+volumes:
+  postgres_data:
+  mongo_data: 
