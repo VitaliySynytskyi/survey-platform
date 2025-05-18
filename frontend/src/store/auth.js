@@ -99,6 +99,12 @@ export const useAuthStore = defineStore('auth', {
   }
 })
 
+// Immediately set Authorization header if token exists on store initialization
+const initialToken = localStorage.getItem('token');
+if (initialToken) {
+  axios.defaults.headers.common['Authorization'] = `Bearer ${initialToken}`;
+}
+
 // Set up axios interceptors for auth token refreshing
 axios.interceptors.response.use(
   response => response,
@@ -114,7 +120,7 @@ axios.interceptors.response.use(
         await authStore.refreshAuthToken()
         
         // Retry the original request with the new token
-        originalRequest.headers['Authorization'] = `Bearer ${authStore.getToken}`
+        originalRequest.headers['Authorization'] = `Bearer ${authStore.token}`
         return axios(originalRequest)
       } catch (refreshError) {
         // If refresh failed, logout and redirect to login
