@@ -323,18 +323,25 @@ import { ref, onMounted, computed } from 'vue';
 import { useAuthStore } from '../store/auth';
 import axios from '../utils/axiosConfig';
 import { saveAs } from 'file-saver';
+import { useRouter } from 'vue-router';
 
 const props = defineProps({
-  id: { type: String, required: true }
+  id: {
+    type: String,
+    required: true
+  }
 });
 
 const authStore = useAuthStore();
+const router = useRouter();
 
+const surveyDetails = ref({ title: '', questions: [], responseRate: undefined, avgCompletionTime: 'N/A' });
+const responses = ref([]);
 const loading = ref(true);
 const error = ref('');
-const surveyDetails = ref({ title: '', questions: [], settings: {}, responseRate: undefined, avgCompletionTime: undefined, lastResponseDate: undefined });
-const responses = ref([]);
 const activeTab = ref('summary');
+const exportDialog = ref(false);
+const exportError = ref(null);
 
 const snackbar = ref({ show: false, text: '', color: 'success' });
 
@@ -350,7 +357,6 @@ const exportOptions = ref({
   includeTimestamp: true,
   includeUserId: true,
 });
-const exportError = ref(null);
 
 const individualResponseHeaders = [
   { title: 'Submission ID', key: 'id' }, // Changed from _id to id based on MongoDB model
@@ -359,23 +365,28 @@ const individualResponseHeaders = [
   { title: 'Actions', key: 'actions', sortable: false },
 ];
 
-const fetchSurveyData = async () => {
+const fetchSurveyDetailsAndResponses = async () => {
   loading.value = true;
   error.value = '';
   try {
-    // Fetch survey details (title, questions)
-    const surveyDetailResponse = await axios.get(`/api/v1/surveys/${props.id}`, {
+    // Fetch survey details (including questions and options)
+    const surveyDetailsResponse = await axios.get(`/api/v1/surveys/${props.id}`, {
       headers: { Authorization: `Bearer ${authStore.token}` }
     });
-    surveyDetails.value = surveyDetailResponse.data;
-    if (!surveyDetails.value.questions) surveyDetails.value.questions = [];
-    if (!surveyDetails.value.settings) surveyDetails.value.settings = {};
+    surveyDetails.value = {
+        ...surveyDetailsResponse.data,
+        questions: surveyDetailsResponse.data.questions || [], // Ensure questions is an array
+        options: (surveyDetailsResponse.data.questions || []).flatMap(q => q.options || []) // Flatten options for easier lookup if needed, ensure options exist
+    };
 
-    // Fetch responses for the survey
+    // Fetch responses
     const responsesResponse = await axios.get(`/api/v1/surveys/${props.id}/responses`, {
       headers: { Authorization: `Bearer ${authStore.token}` }
     });
-    responses.value = responsesResponse.data;
+    responses.value = responsesResponse.data || []; // Ensure responses is an array
+
+    // Post-process data if necessary (e.g., for response rate, completion time)
+    calculateOverviewMetrics(); 
 
   } catch (err) {
     console.error('Error fetching survey data:', err);
@@ -577,8 +588,22 @@ const exportResponsesCSV = async () => {
   }
 };
 
-onMounted(() => {
-  fetchSurveyData();
+const calculateOverviewMetrics = () => {
+  // Implement the logic to calculate response rate and completion time
+  // This is a placeholder and should be replaced with the actual implementation
+};
+
+onMounted(async () => {
+  // Ensure authStore is initialized before trying to use its properties or methods
+  await authStore.fetchUser(); // Or some other initialization logic if needed
+
+  if (!authStore.isAuthenticated) {
+    error.value = 'You must be logged in to view responses.';
+    loading.value = false;
+    // router.push('/login'); // Optionally redirect
+    return;
+  }
+  await fetchSurveyDetailsAndResponses();
 });
 
 </script>

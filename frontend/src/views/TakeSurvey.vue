@@ -179,7 +179,7 @@
 import { ref, reactive, onMounted, computed } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '../store/auth';
-import { surveyApi } from '../services/api';
+import { surveyApi, responseApi } from '../services/api';
 
 export default {
   name: 'TakeSurvey',
@@ -264,7 +264,7 @@ export default {
         const response = await surveyApi.getSurvey(props.id);
         survey.value = response.data;
         if (survey.value && survey.value.is_active === false) {
-          error.value = 'This survey is currently inactive and cannot accept responses.';
+          error.value = 'This survey is currently inactive. It cannot accept responses.';
           // Do not proceed to initialize responses if survey is not active
           loading.value = false; // Stop loading indicator
           return; // Stop further execution
@@ -326,42 +326,88 @@ export default {
     };
     
     const submitSurvey = async () => {
-      if (!valid.value) return;
-      
+      if (form.value) {
+        const { valid: formIsValid } = await form.value.validate(); // Renamed to avoid conflict with component's 'valid' ref
+        if (!formIsValid) {
+          error.value = 'Please correct the errors in the form.';
+          return;
+        }
+      }
+
+      if (survey.value.is_active === false) {
+        error.value = 'This survey is inactive and cannot accept new responses.';
+        return;
+      }
+
       submitting.value = true;
-      error.value = ''; // Clear previous errors
-      
-      // Combine regular responses with checkbox responses
-      const allResponses = {
-        ...responses,
-        ...Object.keys(checkboxResponses).reduce((acc, key) => {
-          acc[key] = checkboxResponses[key];
-          return acc;
-        }, {})
-      };
-      
-      const submission = {
-        surveyId: parseInt(props.id, 10), // Ensure surveyId is an integer
-        answers: Object.keys(allResponses).map(questionIdString => ({
-          questionId: parseInt(questionIdString, 10), // Ensure questionId is an integer
-          value: allResponses[questionIdString]
-        }))
-      };
-      
-      try {
-        // In production, uncomment this
-        await surveyApi.submitResponse(submission, {
-          headers: authStore.isAuthenticated ? { Authorization: `Bearer ${authStore.token}` } : {}
-        });
+      error.value = '';
+
+      const formattedAnswers = [];
+      for (const questionIdStr in responses) {
+        const question = survey.value.questions.find(q => q.id.toString() === questionIdStr.toString()); // Ensure ID comparison is robust
+        if (!question) continue;
+
+        let answerValue = responses[questionIdStr];
+        if (question.type === 'checkbox') {
+          answerValue = getCheckboxArray(questionIdStr);
+        }
         
-        // For development, simulate successful submission - REMOVE THIS
-        // setTimeout(() => {
-        submitted.value = true;
+        // Ensure question.id is an integer for the backend
+        const numericQuestionId = parseInt(questionIdStr, 10);
+        if (isNaN(numericQuestionId)) {
+          console.warn(`Skipping question with non-numeric ID: ${questionIdStr}`);
+          continue;
+        }
+
+        if (answerValue !== null && answerValue !== undefined && (!Array.isArray(answerValue) || answerValue.length > 0)) {
+          formattedAnswers.push({
+            questionId: numericQuestionId, // Use questionId (camelCase) and ensure it's an int
+            value: answerValue  // Use value
+          });
+        } else if (Array.isArray(answerValue) && answerValue.length === 0 && question.type === 'checkbox') {
+           formattedAnswers.push({
+            questionId: numericQuestionId,
+            value: [] 
+          });
+        } else if (answerValue === null && question.type !== 'checkbox') {
+           formattedAnswers.push({
+            questionId: numericQuestionId,
+            value: null
+          });
+        }
+      }
+      
+      const surveyIdInt = parseInt(survey.value.id, 10);
+      if (isNaN(surveyIdInt)) {
+        console.error('Survey ID is not a valid number:', survey.value.id);
+        error.value = 'Cannot submit response: Invalid survey ID.';
         submitting.value = false;
-        // }, 1500);
+        return;
+      }
+
+      const payload = {
+        surveyId: surveyIdInt, // Use surveyId (camelCase) and ensure it's an int
+        answers: formattedAnswers
+      };
+
+      if (authStore.isAuthenticated && authStore.user && authStore.user.id) {
+        payload.userId = parseInt(authStore.user.id, 10); // Add userId if authenticated and available
+         if (isNaN(payload.userId)) {
+            console.warn('User ID is not a valid number, sending without userId:', authStore.user.id);
+            delete payload.userId; // Don't send invalid userId
+        }
+      }
+      
+      // console.log('Submitting payload:', payload);
+
+      try {
+        await responseApi.submitResponse(payload);
+        submitted.value = true;
+        router.push({ name: 'SurveySuccess', params: { id: survey.value.id } }); 
       } catch (err) {
-        console.error('Error submitting response:', err);
-        error.value = 'Failed to submit your response. Please try again.';
+        console.error('Error submitting survey:', err);
+        error.value = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to submit response. Please try again.';
+      } finally {
         submitting.value = false;
       }
     };

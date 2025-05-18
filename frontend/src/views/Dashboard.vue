@@ -70,6 +70,9 @@
             <v-btn color="secondary" variant="text" :to="`/surveys/${survey.id}/edit`">
               <v-icon left>mdi-pencil</v-icon> Edit
             </v-btn>
+            <v-btn color="info" variant="text" :to="`/surveys/${survey.id}/analytics`">
+              <v-icon left>mdi-chart-bar</v-icon> Analytics
+            </v-btn>
             <v-spacer></v-spacer>
             <v-menu>
               <template v-slot:activator="{ props }">
@@ -140,6 +143,7 @@ import { ref, onMounted, computed } from 'vue';
 import { useAuthStore } from '../store/auth';
 import axios from '../utils/axiosConfig';
 import { surveyApi } from '../services/api';
+import { useRouter } from 'vue-router';
 
 export default {
   name: 'Dashboard',
@@ -156,6 +160,7 @@ export default {
       text: '',
       color: 'success'
     });
+    const router = useRouter();
 
     const fetchSurveys = async () => {
       loading.value = true;
@@ -246,6 +251,10 @@ export default {
       };
     };
 
+    const navigateToAnalytics = (surveyId) => {
+      router.push({ name: 'SurveyAnalytics', params: { id: surveyId } });
+    };
+
     onMounted(async () => {
       if (authStore.token) {
         loading.value = true;
@@ -285,7 +294,8 @@ export default {
       deleteLoading,
       snackbar,
       showSnackbar,
-      authStore
+      authStore,
+      navigateToAnalytics
     };
   }
 };

@@ -11,6 +11,7 @@ const EditSurvey = () => import('../views/EditSurvey.vue')
 const SurveyResponses = () => import('../views/SurveyResponses.vue')
 const TakeSurvey = () => import('../views/TakeSurvey.vue')
 const NotFound = () => import('../views/NotFound.vue')
+const SurveySuccess = () => import('../views/SurveySuccess.vue')
 
 const routes = [
   {
@@ -62,6 +63,25 @@ const routes = [
     component: TakeSurvey,
     props: true
   },
+  {
+    path: '/surveys/:id/success',
+    name: 'SurveySuccess',
+    component: SurveySuccess,
+    props: true,
+    meta: { requiresAuth: false }
+  },
+  {
+    path: '/surveys/:id/analytics',
+    name: 'SurveyAnalytics',
+    component: () => import('../views/SurveyAnalytics.vue'),
+    meta: { requiresAuth: true }
+  },
+  // {
+  //   path: '/profile',
+  //   name: 'Profile',
+  //   component: () => import('../views/Profile.vue'),
+  //   meta: { requiresAuth: true }
+  // },
   {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',

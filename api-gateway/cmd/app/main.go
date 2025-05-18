@@ -108,6 +108,9 @@ func setupRouter(config Config) *gin.Engine {
 
 		// Protected route for exporting responses for a specific survey
 		surveyRoutes.GET("/:id/responses/export", jwtAuthMiddleware(config.JWTSecret), createReverseProxy(config.ResponseServiceURL, "/api/v1/surveys"))
+
+		// Proxy survey analytics to response-service
+		surveyRoutes.GET("/:id/analytics", jwtAuthMiddleware(config.JWTSecret), createReverseProxy(config.ResponseServiceURL, "/api/v1/surveys"))
 	}
 
 	// Questions routes - these were proxied to survey-service, ensure they are still relevant or adjust

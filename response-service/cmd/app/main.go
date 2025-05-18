@@ -67,6 +67,9 @@ func main() {
 		// Route for exporting survey responses as CSV
 		api.GET("/surveys/:surveyId/responses/export", responseHandler.ExportSurveyResponsesCSV)
 
+		// Route for survey analytics
+		api.GET("/surveys/:surveyId/analytics", responseHandler.GetSurveyAnalytics)
+
 		// Remove old placeholder routes for /responses if they were here
 	}
 
