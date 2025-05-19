@@ -8,4 +8,6 @@ const (
 	UserIDKey ContextKey = "userID"
 	// UserRolesKey is the context key for the user's roles.
 	UserRolesKey ContextKey = "userRoles"
+	// AuthorizationHeaderKey is the context key for the Authorization header.
+	AuthorizationHeaderKey ContextKey = "authorizationHeader"
 )

@@ -435,29 +435,61 @@ export default {
     
     // Fetch user statistics
     const fetchUserStats = async () => {
+      stats.value = { surveysCount: 0, activeSurveysCount: 0, responsesCount: 0, responseRate: 0 }; // Reset stats
       try {
-        // Get user surveys
-        const params = { page: 1, limit: 1000 }; // Get all user surveys
-        const surveysResponse = await surveyApi.getUserSurveys(params);
+        const surveysResponse = await surveyApi.getUserSurveys({ limit: 1000 }); // Fetch all surveys
         
         if (surveysResponse.data && surveysResponse.data.data) {
-          const surveys = surveysResponse.data.data;
+          const userSurveys = surveysResponse.data.data;
+          stats.value.surveysCount = userSurveys.length;
           
-          // Calculate stats
-          stats.value.surveysCount = surveys.length;
-          stats.value.activeSurveysCount = surveys.filter(s => s.is_active).length;
+          const activeUserSurveys = userSurveys.filter(s => s.is_active);
+          stats.value.activeSurveysCount = activeUserSurveys.length;
           
-          // Calculate total responses
-          const totalResponses = surveys.reduce((sum, survey) => sum + (survey.responses_count || 0), 0);
-          stats.value.responsesCount = totalResponses;
+          let totalResponsesAllSurveys = 0;
+          let activeSurveysWithResponses = 0;
+
+          if (userSurveys.length > 0) {
+            const surveyResponseDataPromises = userSurveys.map(async (survey) => {
+              try {
+                const response = await surveyApi.getSurveyResponses(survey.id, { count_only: true });
+                let count = 0;
+                if (response.data) {
+                  if (typeof response.data.count === 'number') {
+                    count = response.data.count;
+                  } else if (Array.isArray(response.data)) {
+                    count = response.data.length;
+                  }
+                }
+                return { surveyId: survey.id, is_active: survey.is_active, count: count };
+              } catch (err) {
+                console.error(`Failed to fetch response count for survey ${survey.id} in profile:`, err);
+                return { surveyId: survey.id, is_active: survey.is_active, count: 0 };
+              }
+            });
+            
+            const surveyResponseData = await Promise.all(surveyResponseDataPromises);
+
+            surveyResponseData.forEach(data => {
+              totalResponsesAllSurveys += data.count;
+              if (data.is_active && data.count > 0) {
+                activeSurveysWithResponses++;
+              }
+            });
+          }
           
-          // Calculate response rate (avg responses per survey)
-          stats.value.responseRate = surveys.length > 0 
-            ? Math.round((totalResponses / surveys.length) * 10) / 10 
-            : 0;
+          stats.value.responsesCount = totalResponsesAllSurveys; // Total responses from all surveys
+          
+          // Calculate Avg. Response Rate as: 
+          // (Number of active surveys with at least one response / Total number of active surveys) * 100
+          if (stats.value.activeSurveysCount > 0) {
+            stats.value.responseRate = Math.round((activeSurveysWithResponses / stats.value.activeSurveysCount) * 100);
+          } else {
+            stats.value.responseRate = 0; // Avoid division by zero if no active surveys
+          }
         }
       } catch (error) {
-        console.error('Error fetching user stats:', error);
+        console.error('Error fetching user stats for profile:', error);
       }
     };
     

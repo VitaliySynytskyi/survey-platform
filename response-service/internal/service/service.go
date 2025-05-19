@@ -2,12 +2,14 @@ package service
 
 import (
 	"context"
+	"encoding/csv"
 	"encoding/json"
 	"errors"
 	"fmt"
 	"log"
 	"net/http"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/survey-app/response-service/internal/contextkeys"
@@ -21,6 +23,7 @@ type ResponseServiceInterface interface {
 	SubmitResponse(ctx context.Context, req *models.CreateResponseRequest) error
 	GetSurveyResponses(ctx context.Context, surveyID int) ([]*models.Response, error)
 	GetSurveyAnalytics(ctx context.Context, surveyID int) (*models.SurveyAnalyticsResponse, error)
+	ExportSurveyResponsesCSV(ctx context.Context, surveyID int) (csvData string, filename string, err error)
 }
 
 // ResponseService implements ResponseServiceInterface
@@ -50,6 +53,14 @@ func (s *ResponseService) getSurveyDetails(ctx context.Context, surveyID int) (*
 	if err != nil {
 		log.Printf("[SERVICE_ERROR] getSurveyDetails: Failed to create request to survey-service for SurveyID %d: %v", surveyID, err)
 		return nil, fmt.Errorf("failed to create request to survey-service: %w", err)
+	}
+
+	// Forward Authorization header if present in context
+	if authHeaderVal := ctx.Value(contextkeys.AuthorizationHeaderKey); authHeaderVal != nil {
+		if authHeader, ok := authHeaderVal.(string); ok && authHeader != "" {
+			httpReq.Header.Set("Authorization", authHeader)
+			log.Printf("[SERVICE_INFO] getSurveyDetails: Forwarding Authorization header to survey-service.")
+		}
 	}
 
 	// Propagate X-User-ID and X-User-Roles from context if they exist
@@ -334,4 +345,107 @@ func (s *ResponseService) GetSurveyAnalytics(ctx context.Context, surveyID int) 
 	}
 
 	return analyticsResp, nil
+}
+
+// ExportSurveyResponsesCSV generates a CSV string of all responses for a given survey.
+// It fetches survey details for question text (headers) and all responses.
+func (s *ResponseService) ExportSurveyResponsesCSV(ctx context.Context, surveyID int) (csvDataStr string, filename string, err error) {
+	log.Printf("[SERVICE_INFO] ExportSurveyResponsesCSV: Starting export for SurveyID %d", surveyID)
+
+	// 1. Fetch Survey Details (for question texts as headers)
+	surveyDetails, err := s.getSurveyDetails(ctx, surveyID)
+	if err != nil {
+		log.Printf("[SERVICE_ERROR] ExportSurveyResponsesCSV: Failed to get survey details for SurveyID %d: %v", surveyID, err)
+		return "", "", fmt.Errorf("failed to retrieve survey details (ID: %d): %w", surveyID, err)
+	}
+	log.Printf("[SERVICE_INFO] ExportSurveyResponsesCSV: Successfully fetched survey details for SurveyID %d. Number of questions: %d", surveyID, len(surveyDetails.Questions))
+
+	// 2. Fetch All Responses for this Survey
+	responses, err := s.GetSurveyResponses(ctx, surveyID) // This already calls s.repo.GetResponsesBySurveyID
+	if err != nil {
+		log.Printf("[SERVICE_ERROR] ExportSurveyResponsesCSV: Failed to get responses for SurveyID %d: %v", surveyID, err)
+		return "", "", fmt.Errorf("failed to retrieve responses (ID: %d): %w", surveyID, err)
+	}
+	log.Printf("[SERVICE_INFO] ExportSurveyResponsesCSV: Successfully fetched %d responses for SurveyID %d", len(responses), surveyID)
+
+	// 3. Prepare CSV Data
+	var csvBuffer strings.Builder
+	csvWriter := csv.NewWriter(&csvBuffer)
+
+	// 3a. Write Headers
+	headers := []string{"ResponseID", "SubmittedAt", "UserID"}
+	questionIDToHeaderIndex := make(map[int]int) // Map question ID to its column index in the CSV
+	questionIDToType := make(map[int]string)     // Map question ID to its type for answer formatting
+
+	for _, q := range surveyDetails.Questions {
+		headers = append(headers, q.Text) // Use question text as header
+		questionIDToHeaderIndex[q.ID] = len(headers) - 1
+		questionIDToType[q.ID] = q.Type
+	}
+
+	if err := csvWriter.Write(headers); err != nil {
+		log.Printf("[SERVICE_ERROR] ExportSurveyResponsesCSV: Failed to write CSV headers for SurveyID %d: %v", surveyID, err)
+		return "", "", fmt.Errorf("failed to write CSV headers: %w", err)
+	}
+
+	// 3b. Write Response Rows
+	for _, resp := range responses {
+		row := make([]string, len(headers)) // Initialize row with empty strings for all columns
+
+		// Standard columns
+		row[0] = resp.ID.Hex() // Convert ObjectID to string
+		row[1] = resp.SubmittedAt.Format(time.RFC3339)
+		if resp.UserID != nil {
+			row[2] = strconv.Itoa(*resp.UserID)
+		} else {
+			row[2] = "Anonymous"
+		}
+
+		// Answer columns - map answers to the correct question column
+		for _, ans := range resp.Answers {
+			if headerIndex, ok := questionIDToHeaderIndex[ans.QuestionID]; ok {
+				// Format answer value based on its type and question type
+				var formattedValue string
+				if ans.Value == nil {
+					formattedValue = ""
+				} else {
+					qType := questionIDToType[ans.QuestionID]
+					switch qType {
+					case "checkbox": // Checkbox answers are []interface{} or []string
+						if valSlice, ok := ans.Value.([]interface{}); ok {
+							var strVals []string
+							for _, item := range valSlice {
+								strVals = append(strVals, fmt.Sprintf("%v", item))
+							}
+							formattedValue = strings.Join(strVals, "; ") // Join multiple checkbox values
+						} else if valStrSlice, ok := ans.Value.([]string); ok {
+							formattedValue = strings.Join(valStrSlice, "; ")
+						} else {
+							formattedValue = fmt.Sprintf("%v", ans.Value) // Fallback
+						}
+					default:
+						formattedValue = fmt.Sprintf("%v", ans.Value)
+					}
+				}
+				row[headerIndex] = formattedValue
+			} else {
+				log.Printf("[SERVICE_WARN] ExportSurveyResponsesCSV: Answer for QuestionID %d found in response %s, but this QuestionID is not in the survey's question list.", ans.QuestionID, resp.ID.Hex())
+			}
+		}
+		if err := csvWriter.Write(row); err != nil {
+			log.Printf("[SERVICE_ERROR] ExportSurveyResponsesCSV: Error writing CSV row for response %s, SurveyID %d: %v", resp.ID.Hex(), surveyID, err)
+			// Potentially continue and try other rows, or return an error
+		}
+	}
+	csvWriter.Flush()
+
+	if err := csvWriter.Error(); err != nil {
+		log.Printf("[SERVICE_ERROR] ExportSurveyResponsesCSV: CSV writer error for SurveyID %d: %v", surveyID, err)
+		return "", "", fmt.Errorf("error during CSV generation: %w", err)
+	}
+
+	generatedFilename := fmt.Sprintf("survey_%d_responses_%s.csv", surveyID, time.Now().Format("20060102_150405"))
+	log.Printf("[SERVICE_INFO] ExportSurveyResponsesCSV: Successfully generated CSV data for SurveyID %d. Filename: %s", surveyID, generatedFilename)
+
+	return csvBuffer.String(), generatedFilename, nil
 }

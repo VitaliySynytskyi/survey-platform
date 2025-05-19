@@ -129,12 +129,66 @@ func (h *ResponseHandler) GetSurveyResponsesHandler(c *gin.Context) {
 }
 
 // ExportSurveyResponsesCSV handles GET requests to /surveys/:surveyId/responses/export
-// This is referenced in main.go, so its signature should be correct for gin.
 func (h *ResponseHandler) ExportSurveyResponsesCSV(c *gin.Context) {
-	// surveyIDStr := c.Param("surveyId") // Example of getting surveyId if needed
-	// Placeholder logic: In a real implementation, you would fetch data,
-	// format it as CSV, and set appropriate headers like Content-Disposition.
-	c.String(http.StatusNotImplemented, "CSV export functionality is not fully implemented in this handler yet.")
+	surveyIDStr := c.Param("surveyId")
+	surveyID, err := strconv.Atoi(surveyIDStr)
+	if err != nil {
+		log.Printf("[HANDLER_ERROR] ExportSurveyResponsesCSV: Invalid survey_id format '%s': %v", surveyIDStr, err)
+		c.JSON(http.StatusBadRequest, gin.H{"error": "Invalid survey_id format"})
+		return
+	}
+
+	log.Printf("[HANDLER_INFO] ExportSurveyResponsesCSV: Received request for SurveyID: %d", surveyID)
+	ctx := c.Request.Context() // Original context
+
+	// Forward Authorization header
+	authHeader := c.GetHeader("Authorization")
+	if authHeader != "" {
+		log.Printf("[HANDLER_INFO] ExportSurveyResponsesCSV: Forwarding Authorization header to service context.")
+		ctx = context.WithValue(ctx, contextkeys.AuthorizationHeaderKey, authHeader)
+	} else {
+		log.Printf("[HANDLER_WARN] ExportSurveyResponsesCSV: No Authorization header found in incoming request.")
+	}
+
+	// Forward X-User-ID if present
+	xUserIDStr := c.GetHeader("X-User-ID")
+	if xUserIDStr != "" {
+		if uid, convErr := strconv.Atoi(xUserIDStr); convErr == nil {
+			log.Printf("[HANDLER_INFO] ExportSurveyResponsesCSV: Forwarding X-User-ID: %s to service context.", xUserIDStr)
+			ctx = context.WithValue(ctx, contextkeys.UserIDKey, uid)
+		} else {
+			log.Printf("[HANDLER_WARN] ExportSurveyResponsesCSV: X-User-ID header '%s' is not a valid integer: %v", xUserIDStr, convErr)
+		}
+	}
+
+	// Forward X-User-Roles if present
+	xUserRolesStr := c.GetHeader("X-User-Roles")
+	if xUserRolesStr != "" {
+		if roles := parseRolesHeader(xUserRolesStr); len(roles) > 0 {
+			log.Printf("[HANDLER_INFO] ExportSurveyResponsesCSV: Forwarding X-User-Roles: %v to service context.", roles)
+			ctx = context.WithValue(ctx, contextkeys.UserRolesKey, roles)
+		}
+	}
+
+	csvData, filename, err := h.responseService.ExportSurveyResponsesCSV(ctx, surveyID)
+	if err != nil {
+		log.Printf("[HANDLER_ERROR] ExportSurveyResponsesCSV: Service call failed for SurveyID %d: %v", surveyID, err)
+		// Check for specific error types if needed, e.g., survey not found
+		if strings.Contains(err.Error(), "not found") { // Basic check, could be more robust
+			c.JSON(http.StatusNotFound, gin.H{"error": err.Error()})
+		} else {
+			c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to export responses: %s", err.Error())})
+		}
+		return
+	}
+
+	log.Printf("[HANDLER_INFO] ExportSurveyResponsesCSV: Successfully generated CSV for SurveyID %d. Filename: %s. Size: %d bytes", surveyID, filename, len(csvData))
+
+	// Set headers for CSV download
+	c.Header("Content-Description", "File Transfer")
+	c.Header("Content-Disposition", "attachment; filename="+filename)
+	c.Header("Content-Type", "text/csv; charset=utf-8")
+	c.Data(http.StatusOK, "text/csv; charset=utf-8", []byte(csvData))
 }
 
 // GetSurveyAnalytics handles GET requests to /surveys/{survey_id}/analytics

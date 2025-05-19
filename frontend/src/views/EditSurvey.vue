@@ -135,9 +135,9 @@
                 ></v-switch>
                 <template v-if="['multiple_choice', 'checkbox', 'dropdown'].includes(question.type)">
                   <div class="mt-2 mb-1 text-subtitle-2">Options</div>
-                  <div v-for="(option, optIndex) in question.options" :key="optIndex" class="d-flex align-center mb-2">
+                  <div v-for="(optionObject, optIndex) in question.options" :key="optIndex" class="d-flex align-center mb-2">
                     <v-text-field
-                      v-model="question.options[optIndex]"
+                      v-model="optionObject.text"
                       label="Option text"
                       variant="outlined"
                       density="compact"
@@ -249,14 +249,36 @@ export default {
         const response = await axios.get(`/api/v1/surveys/${props.id}`, {
           headers: { Authorization: `Bearer ${authStore.token}` }
         });
-        // Assuming response.data contains the survey structure including questions
-        Object.assign(survey, response.data);
-        if (!survey.settings) { // Ensure settings object exists
-          survey.settings = { require_login: false, allow_anonymous: true, one_response_per_user: false };
+        const fetchedSurvey = response.data;
+        
+        // Ensure settings object exists
+        if (!fetchedSurvey.settings) {
+          fetchedSurvey.settings = { require_login: false, allow_anonymous: true, one_response_per_user: false };
         }
-        if (!survey.questions) { // Ensure questions array exists
-           survey.questions = [];
+        // Ensure questions array exists and process options
+        if (!fetchedSurvey.questions) {
+           fetchedSurvey.questions = [];
+        } else {
+          fetchedSurvey.questions = fetchedSurvey.questions.map(q => {
+            if (['multiple_choice', 'checkbox', 'dropdown'].includes(q.type)) {
+              if (q.options && q.options.length > 0) {
+                q.options = q.options.map(opt => {
+                  if (typeof opt === 'string') {
+                    return { text: opt };
+                  } else if (typeof opt === 'object' && opt !== null && typeof opt.text === 'string') {
+                    return { text: opt.text }; // Ensure it's in the {text: ...} format we want
+                  }
+                  return { text: '' }; // Fallback for malformed options
+                });
+              } else {
+                q.options = []; // Ensure it's an empty array if no options
+              }
+            }
+            return q;
+          });
         }
+        Object.assign(survey, fetchedSurvey);
+
       } catch (err) {
         console.error('Error fetching survey details:', err);
         error.value = err.response?.data?.error || 'Failed to load survey details. Please try again.';
@@ -290,32 +312,45 @@ export default {
 
     const addOption = (question) => {
       if (!question.options) question.options = [];
-      question.options.push('');
+      question.options.push({ text: '' });
     };
 
     const removeOption = (question, index) => {
-      if (question.options && question.options.length > 1) {
+      if (question.options) { // Ensure options array exists
         question.options.splice(index, 1);
-      } else if (question.options && question.options.length === 1){
-        question.options[0] = ''; // Clear if only one option left
       }
     };
 
     const updateSurveyHandler = async () => {
-      if (!form.value.validate() || survey.questions.length === 0) return;
+      // Validate form first
+      const { valid: formIsValid } = await form.value.validate();
+      if (!formIsValid || survey.questions.length === 0) {
+        if (survey.questions.length === 0) {
+          showSnackbar('Survey must have at least one question.', 'error');
+        }
+        return;
+      }
       
       saving.value = true;
       error.value = '';
       try {
         const payload = {
-            ...survey,
-            questions: survey.questions.map(q => ({
-                id: q.id,
+            ...survey, // Spread existing survey properties like title, description, settings
+            id: survey.id, // Ensure id is part of the payload
+            questions: survey.questions.map(q => {
+              let processedOptions = [];
+              if (['multiple_choice', 'checkbox', 'dropdown'].includes(q.type)) {
+                // Ensure options are strings and not empty before sending to backend
+                processedOptions = q.options ? q.options.map(opt => opt.text.trim()).filter(optText => optText !== '') : [];
+              }
+              return {
+                id: q.id, // Include existing question ID if it exists (for updates)
                 text: q.text,
                 type: q.type,
                 required: q.required,
-                options: q.options ? q.options.filter(opt => opt && opt.trim() !== '') : [] 
-            }))
+                options: processedOptions 
+              };
+            })
         };
         await axios.put(`/api/v1/surveys/${props.id}`, payload, {
           headers: { Authorization: `Bearer ${authStore.token}` }
