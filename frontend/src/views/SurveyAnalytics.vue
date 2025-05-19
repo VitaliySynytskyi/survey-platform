@@ -60,7 +60,7 @@
               <div v-if="isChartable(question.question_type) && question.options_summary && question.options_summary.length > 0">
                 <Bar :data="getChartData(question)" :options="chartOptions" style="max-height: 300px;" />
               </div>
-              <div v-else-if="(question.question_type === 'single_choice' || question.question_type === 'multiple_choice' || question.question_type === 'dropdown' || question.question_type === 'linear_scale') && (!question.options_summary || question.options_summary.length === 0)">
+              <div v-else-if="isChartable(question.question_type) && (!question.options_summary || question.options_summary.length === 0)">
                  <p class="text-center grey--text py-5">No responses recorded for this question yet to display a chart.</p>
               </div>
 
@@ -182,7 +182,7 @@
   }));
 
   const isChartable = (questionType) => {
-      return ['single_choice', 'multiple_choice', 'dropdown', 'linear_scale'].includes(questionType);
+      return ['single_choice', 'multiple_choice', 'dropdown', 'linear_scale', 'checkbox'].includes(questionType);
   }
   
   const getChartData = (question) => {
@@ -240,6 +240,7 @@
 
       if (analyticsResponse.status === 'fulfilled') {
           analyticsData.value = analyticsResponse.value.data;
+          console.log('Full analytics data received:', JSON.parse(JSON.stringify(analyticsData.value))); // Log the data
       } else {
           throw analyticsResponse.reason; // This will be caught by the main catch block
       }

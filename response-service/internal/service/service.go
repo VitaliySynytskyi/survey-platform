@@ -5,11 +5,14 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"log"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/survey-app/response-service/internal/models"
 	"github.com/survey-app/response-service/internal/repository"
+	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 
 // ResponseServiceInterface defines methods for response-related business logic
@@ -99,15 +102,17 @@ func (s *ResponseService) GetSurveyResponses(ctx context.Context, surveyID int) 
 
 // GetSurveyAnalytics retrieves and processes survey responses to generate analytics
 func (s *ResponseService) GetSurveyAnalytics(ctx context.Context, surveyID int) (*models.SurveyAnalyticsResponse, error) {
-	// 1. Fetch survey details (including questions and their types)
+	// 1. Fetch survey details
 	surveyDetails, err := s.getSurveyDetails(ctx, surveyID)
 	if err != nil {
+		log.Printf("Error fetching survey details for analytics (surveyID: %d): %v", surveyID, err) // Keep error log
 		return nil, fmt.Errorf("failed to get survey details for analytics: %w", err)
 	}
 
-	// 2. Fetch all responses for the survey
+	// 2. Fetch all responses
 	responses, err := s.repo.GetResponsesBySurveyID(ctx, surveyID)
 	if err != nil {
+		log.Printf("Error fetching responses for analytics (surveyID: %d): %v", surveyID, err) // Keep error log
 		return nil, fmt.Errorf("failed to get survey responses for analytics: %w", err)
 	}
 
@@ -119,8 +124,7 @@ func (s *ResponseService) GetSurveyAnalytics(ctx context.Context, surveyID int) 
 		QuestionAnalytics: make([]models.QuestionAnalytics, 0, len(surveyDetails.Questions)),
 	}
 
-	// Pre-build a map for faster option lookup by text for each question
-	optionTextToIDMap := make(map[int]map[string]int) // questionID -> optionText -> optionID
+	optionTextToIDMap := make(map[int]map[string]int)
 	for _, q := range surveyDetails.Questions {
 		if q.Type == "single_choice" || q.Type == "multiple_choice" || q.Type == "dropdown" || q.Type == "checkbox" {
 			optionTextToIDMap[q.ID] = make(map[string]int)
@@ -137,28 +141,17 @@ func (s *ResponseService) GetSurveyAnalytics(ctx context.Context, surveyID int) 
 				QuestionText: q.Text,
 				QuestionType: q.Type,
 			}
-			// Populate empty OptionsSummary for choice-based questions even with no responses
 			if q.Type == "single_choice" || q.Type == "multiple_choice" || q.Type == "dropdown" || q.Type == "checkbox" || q.Type == "linear_scale" {
 				qa.OptionsSummary = make([]models.OptionSummary, 0)
-				if q.Type == "linear_scale" { // Assumed 1-5 scale
-					for i := 1; i <= 5; i++ {
+				if q.Type == "linear_scale" {
+					for i := 1; i <= 5; i++ { // Assuming 1-5 scale
 						val := i
-						qa.OptionsSummary = append(qa.OptionsSummary, models.OptionSummary{
-							OptionID:   &val,
-							OptionText: fmt.Sprintf("%d", val),
-							Count:      0,
-							Percentage: 0,
-						})
+						qa.OptionsSummary = append(qa.OptionsSummary, models.OptionSummary{OptionID: &val, OptionText: fmt.Sprintf("%d", val), Count: 0, Percentage: 0})
 					}
 				} else {
 					for _, opt := range q.Options {
 						optID := opt.ID
-						qa.OptionsSummary = append(qa.OptionsSummary, models.OptionSummary{
-							OptionID:   &optID,
-							OptionText: opt.Text,
-							Count:      0,
-							Percentage: 0,
-						})
+						qa.OptionsSummary = append(qa.OptionsSummary, models.OptionSummary{OptionID: &optID, OptionText: opt.Text, Count: 0, Percentage: 0})
 					}
 				}
 			}
@@ -173,16 +166,14 @@ func (s *ResponseService) GetSurveyAnalytics(ctx context.Context, surveyID int) 
 			QuestionText: q.Text,
 			QuestionType: q.Type,
 		}
-
 		actualRespondersToThisQuestion := 0
 
 		switch q.Type {
-		case "single_choice", "multiple_choice", "dropdown": // These are effectively single-select text value from frontend
-			optionCounts := make(map[int]int) // Key: option_id
+		case "single_choice", "multiple_choice", "dropdown":
+			optionCounts := make(map[int]int)
 			for _, opt := range q.Options {
 				optionCounts[opt.ID] = 0
 			}
-
 			for _, resp := range responses {
 				foundAnswerToThisQuestionInResp := false
 				for _, ans := range resp.Answers {
@@ -208,33 +199,30 @@ func (s *ResponseService) GetSurveyAnalytics(ctx context.Context, surveyID int) 
 					percentage = (float64(count) / float64(actualRespondersToThisQuestion)) * 100
 				}
 				optID := opt.ID
-				qa.OptionsSummary = append(qa.OptionsSummary, models.OptionSummary{
-					OptionID:   &optID,
-					OptionText: opt.Text,
-					Count:      count,
-					Percentage: percentage,
-				})
+				qa.OptionsSummary = append(qa.OptionsSummary, models.OptionSummary{OptionID: &optID, OptionText: opt.Text, Count: count, Percentage: percentage})
 			}
 
 		case "checkbox":
-			optionCounts := make(map[int]int) // Key: option_id
+			optionCounts := make(map[int]int)
 			for _, opt := range q.Options {
 				optionCounts[opt.ID] = 0
 			}
-
 			for _, resp := range responses {
 				foundAnswerToThisQuestionInResp := false
 				for _, ans := range resp.Answers {
 					if ans.QuestionID == q.ID {
-						if selectedOptionTexts, ok := ans.Value.([]interface{}); ok {
-							if len(selectedOptionTexts) > 0 && !foundAnswerToThisQuestionInResp {
+						if selectedOptionValues, ok := ans.Value.(primitive.A); ok {
+							if len(selectedOptionValues) > 0 && !foundAnswerToThisQuestionInResp {
 								actualRespondersToThisQuestion++
 								foundAnswerToThisQuestionInResp = true
 							}
-							for _, valInterface := range selectedOptionTexts {
-								if selectedOptionText, textOk := valInterface.(string); textOk {
-									if optID, found := optionTextToIDMap[q.ID][selectedOptionText]; found {
-										optionCounts[optID]++
+							for _, valInterface := range selectedOptionValues {
+								if optionValueStr, isString := valInterface.(string); isString {
+									selectedOptionID, errAtoi := strconv.Atoi(optionValueStr)
+									if errAtoi == nil {
+										if _, knownOption := optionCounts[selectedOptionID]; knownOption {
+											optionCounts[selectedOptionID]++
+										}
 									}
 								}
 							}
@@ -247,34 +235,24 @@ func (s *ResponseService) GetSurveyAnalytics(ctx context.Context, surveyID int) 
 			for _, opt := range q.Options {
 				count := optionCounts[opt.ID]
 				percentage := 0.0
-				// For checkboxes, percentage can be (count for this option / num people who answered this Q) * 100
-				// Or (count for this option / total number of selections for this Q) * 100
-				// Using the former for now.
 				if actualRespondersToThisQuestion > 0 {
 					percentage = (float64(count) / float64(actualRespondersToThisQuestion)) * 100
 				}
 				optID := opt.ID
-				qa.OptionsSummary = append(qa.OptionsSummary, models.OptionSummary{
-					OptionID:   &optID,
-					OptionText: opt.Text,
-					Count:      count,
-					Percentage: percentage,
-				})
+				qa.OptionsSummary = append(qa.OptionsSummary, models.OptionSummary{OptionID: &optID, OptionText: opt.Text, Count: count, Percentage: percentage})
 			}
 
 		case "linear_scale":
-			valueCounts := make(map[int]int) // Key: scale_value (e.g., 1-5)
-			// Assuming a fixed scale of 1-5 based on frontend TakeSurvey.vue
-			minScale, maxScale := 1, 5
+			valueCounts := make(map[int]int)
+			minScale, maxScale := 1, 5 // Assuming 1-5 scale
 			for i := minScale; i <= maxScale; i++ {
 				valueCounts[i] = 0
 			}
-
 			for _, resp := range responses {
 				foundAnswerToThisQuestionInResp := false
 				for _, ans := range resp.Answers {
 					if ans.QuestionID == q.ID {
-						if selectedValueFloat, ok := ans.Value.(float64); ok { // JSON numbers are float64
+						if selectedValueFloat, ok := ans.Value.(float64); ok {
 							selectedValueInt := int(selectedValueFloat)
 							if selectedValueInt >= minScale && selectedValueInt <= maxScale {
 								valueCounts[selectedValueInt]++
@@ -296,12 +274,7 @@ func (s *ResponseService) GetSurveyAnalytics(ctx context.Context, surveyID int) 
 					percentage = (float64(count) / float64(actualRespondersToThisQuestion)) * 100
 				}
 				val := i
-				qa.OptionsSummary = append(qa.OptionsSummary, models.OptionSummary{
-					OptionID:   &val, // Using the scale value itself as a stand-in for an "ID"
-					OptionText: fmt.Sprintf("%d", i),
-					Count:      count,
-					Percentage: percentage,
-				})
+				qa.OptionsSummary = append(qa.OptionsSummary, models.OptionSummary{OptionID: &val, OptionText: fmt.Sprintf("%d", i), Count: count, Percentage: percentage})
 			}
 
 		case "text", "paragraph", "short_answer", "date":
@@ -318,7 +291,7 @@ func (s *ResponseService) GetSurveyAnalytics(ctx context.Context, surveyID int) 
 			}
 
 		default:
-			// Handle unknown question type or skip
+			// Handle unknown or non-analyzable question type
 		}
 		analyticsResp.QuestionAnalytics = append(analyticsResp.QuestionAnalytics, qa)
 	}
