@@ -12,6 +12,8 @@ export const authApi = {
 // Survey endpoints
 export const surveyApi = {
   getSurveys: () => api.get('/api/v1/surveys'),
+  getAllSurveys: (params) => api.get('/api/v1/surveys/all', { params }),
+  getUserSurveys: (params) => api.get('/api/v1/surveys/me', { params }),
   getSurvey: (id) => api.get(`/api/v1/surveys/${id}`),
   createSurvey: (surveyData) => api.post('/api/v1/surveys', surveyData),
   updateSurvey: (id, surveyData) => api.put(`/api/v1/surveys/${id}`, surveyData),

@@ -1,6 +1,17 @@
 <template>
   <v-card class="survey-card h-100 rounded-xl" elevation="2">
     <div class="status-indicator" :class="survey.is_active ? 'active' : 'inactive'"></div>
+    
+    <!-- Owner Badge -->
+    <v-badge
+      v-if="!isOwnSurvey"
+      content="Created by others"
+      color="info"
+      offset-x="15"
+      offset-y="15"
+      location="top end"
+    ></v-badge>
+    
     <v-card-item>
       <template v-slot:prepend>
         <v-avatar color="primary" size="40" class="mr-3">
@@ -12,6 +23,15 @@
         <div class="d-flex align-center">
           <v-icon size="16" class="mr-1">mdi-calendar</v-icon>
           <span>{{ formatDate(survey.created_at) }}</span>
+          <v-chip 
+            v-if="survey.created_by_username" 
+            class="ml-2" 
+            size="x-small" 
+            color="grey"
+            label
+          >
+            {{ survey.created_by_username }}
+          </v-chip>
         </div>
       </v-card-subtitle>
     </v-card-item>
@@ -52,7 +72,14 @@
       <v-btn variant="text" color="primary" :to="`/surveys/${survey.id}`" size="small">
         <v-icon>mdi-eye</v-icon>
       </v-btn>
-      <v-btn variant="text" color="secondary" :to="`/surveys/${survey.id}/edit`" size="small">
+      <v-btn 
+        variant="text" 
+        color="secondary" 
+        :to="`/surveys/${survey.id}/edit`" 
+        size="small"
+        :disabled="!canEdit"
+        v-tooltip="!canEdit ? 'You can only edit your own surveys' : ''"
+      >
         <v-icon>mdi-pencil</v-icon>
       </v-btn>
       <v-btn variant="text" color="info" :to="`/surveys/${survey.id}/analytics`" size="small">
@@ -75,14 +102,23 @@
             </template>
             <v-list-item-title>View Responses</v-list-item-title>
           </v-list-item>
-          <v-list-item @click="$emit('toggle-status', survey)">
+          <v-list-item 
+            @click="$emit('toggle-status', survey)"
+            :disabled="!canEdit"
+            v-if="canEdit"
+          >
             <template v-slot:prepend>
               <v-icon>{{ survey.is_active ? 'mdi-close-circle' : 'mdi-check-circle' }}</v-icon>
             </template>
             <v-list-item-title>{{ survey.is_active ? 'Deactivate' : 'Activate' }}</v-list-item-title>
           </v-list-item>
-          <v-divider></v-divider>
-          <v-list-item @click="$emit('delete', survey)" class="text-error">
+          <v-divider v-if="canDelete"></v-divider>
+          <v-list-item 
+            @click="$emit('delete', survey)" 
+            class="text-error"
+            :disabled="!canDelete"
+            v-if="canDelete"
+          >
             <template v-slot:prepend>
               <v-icon color="error">mdi-delete</v-icon>
             </template>
@@ -101,9 +137,21 @@ export default {
     survey: {
       type: Object,
       required: true
+    },
+    isOwnSurvey: {
+      type: Boolean,
+      default: true
+    },
+    canEdit: {
+      type: Boolean,
+      default: true
+    },
+    canDelete: {
+      type: Boolean,
+      default: true
     }
   },
-  emits: ['delete', 'toggle-status'],
+  emits: ['delete', 'toggle-status', 'share'],
   methods: {
     formatDate(dateString) {
       if (!dateString) return 'N/A';

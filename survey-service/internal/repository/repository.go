@@ -17,8 +17,8 @@ type SurveyRepositoryInterface interface {
 	// Survey operations (non-transactional)
 	CreateSurvey(ctx context.Context, survey *models.Survey) (int, error)
 	GetSurvey(ctx context.Context, id int) (*models.Survey, error)
-	GetSurveysByCreatorID(ctx context.Context, creatorID int) ([]*models.Survey, error)
-	GetAllSurveys(ctx context.Context) ([]*models.Survey, error)
+	ListSurveysByCreatorID(ctx context.Context, creatorID int, offset, limit int) ([]*models.Survey, int, error)
+	ListAllSurveys(ctx context.Context, isUserAdmin bool, offset, limit int) ([]*models.Survey, int, error)
 	UpdateSurvey(ctx context.Context, survey *models.Survey) error
 	DeleteSurvey(ctx context.Context, id int) error
 	UpdateSurveyStatus(ctx context.Context, id int, isActive bool) error

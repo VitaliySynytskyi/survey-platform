@@ -29,12 +29,14 @@ var ErrNotFound = errors.New("not found")
 type SurveyServiceInterface interface {
 	// Survey operations
 	CreateSurvey(ctx context.Context, survey *models.Survey, questions []models.QuestionUpdateRequest) (int, error)
-	GetSurveys(ctx context.Context) ([]*models.Survey, error)
+	// GetSurveys(ctx context.Context) ([]*models.Survey, error) // Removing this as it's replaced by paginated versions
 	GetSurvey(ctx context.Context, id int) (*models.Survey, error)
 	UpdateSurvey(ctx context.Context, survey *models.Survey) error
 	UpdateSurveyWithQuestions(ctx context.Context, survey *models.Survey, questions []models.QuestionUpdateRequest) error
 	DeleteSurvey(ctx context.Context, id int) error
 	UpdateSurveyStatus(ctx context.Context, id int, isActive bool) error
+	ListUserSurveys(ctx context.Context, page, limit int) ([]*models.Survey, int, error)
+	ListAllPublicSurveys(ctx context.Context, page, limit int) ([]*models.Survey, int, error)
 
 	// Question operations
 	AddQuestion(ctx context.Context, req *models.CreateQuestionRequest) (int, error)
@@ -272,25 +274,21 @@ func (s *SurveyService) GetSurvey(ctx context.Context, id int) (*models.Survey, 
 }
 
 // GetSurveys gets surveys based on user role (all for admin, own for user)
+/* // Removing this method as it's no longer routed and GetAllSurveys in repo was changed
 func (s *SurveyService) GetSurveys(ctx context.Context) ([]*models.Survey, error) {
 	userID, roles, err := getUserAndRolesFromContext(ctx)
 	if err != nil {
-		// Log the error but proceed to fetch all surveys for any authenticated user if context is partially available or for basic view
-		// Depending on strictness, could return error here.
-		// For the new requirement "all users see all surveys", we might not strictly need userID/roles here if we always fetch all.
 		log.Printf("[SERVICE_WARN] GetSurveys: Error getting full user context: %v. Proceeding to fetch all surveys.", err)
-		// Fallback to fetching all surveys, frontend will handle edit/delete visibility.
-		// If err meant no user context at all, this might be an issue if some auth is still expected.
-		// However, API gateway already ensures user is authenticated with jwtAuthMiddleware for GET /surveys
 	}
 
-	log.Printf("[SERVICE_INFO] GetSurveys: Called by UserID: %d, Roles: %v", userID, roles) // userID might be 0 if context error occurred
+	log.Printf("[SERVICE_INFO] GetSurveys: Called by UserID: %d, Roles: %v", userID, roles)
 
-	// New requirement: All authenticated users see all surveys.
-	// Admins effectively have this already. For regular users, change from GetSurveysByCreatorID to GetAllSurveys.
-	// The authorization for editing/deleting is handled by authorizeSurveyAccess in those respective methods.
-	return s.repo.GetAllSurveys(ctx)
+	// This was causing a build error as s.repo.GetAllSurveys was removed/renamed in the interface.
+	// The functionality is now covered by ListAllPublicSurveys and ListUserSurveys.
+	// return s.repo.GetAllSurveys(ctx)
+	return nil, errors.New("GetSurveys method is deprecated and should not be called") // Or simply remove the method body
 }
+*/
 
 // UpdateSurvey updates a survey - DEPRECATED in favor of UpdateSurveyWithQuestions?
 // If still used, it needs authorization.
@@ -559,4 +557,60 @@ func (s *SurveyService) DeleteQuestion(ctx context.Context, id int) error {
 	}
 	// User is authorized (owner or admin)
 	return s.repo.DeleteQuestion(ctx, id)
+}
+
+// ListUserSurveys retrieves surveys created by the current user with pagination.
+func (s *SurveyService) ListUserSurveys(ctx context.Context, page, limit int) ([]*models.Survey, int, error) {
+	userID, _, err := getUserAndRolesFromContext(ctx)
+	if err != nil {
+		return nil, 0, fmt.Errorf("ListUserSurveys: %w", err)
+	}
+
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 10 // Default limit
+	}
+	// Add a max limit if desired, e.g., if limit > 100 { limit = 100 }
+
+	offset := (page - 1) * limit
+
+	log.Printf("[SVC_DEBUG] ListUserSurveys: UserID: %d, Page: %d, Limit: %d, Offset: %d", userID, page, limit, offset)
+	surveys, total, err := s.repo.ListSurveysByCreatorID(ctx, userID, offset, limit)
+	if err != nil {
+		log.Printf("[SVC_ERROR] ListUserSurveys: Error from repository: %v", err)
+		return nil, 0, fmt.Errorf("failed to list user surveys: %w", err)
+	}
+	return surveys, total, nil
+}
+
+// ListAllPublicSurveys retrieves all surveys (e.g., active ones for non-admins, all for admins) with pagination.
+func (s *SurveyService) ListAllPublicSurveys(ctx context.Context, page, limit int) ([]*models.Survey, int, error) {
+	userID, roles, err := getUserAndRolesFromContext(ctx)
+	if err != nil {
+		// Depending on policy, this endpoint might still work for non-authenticated if some surveys are truly public.
+		// For now, we assume authentication is required as per API gateway setup.
+		return nil, 0, fmt.Errorf("ListAllPublicSurveys: %w", err)
+	}
+	_ = userID // userID might be used later if non-admins see a different subset
+
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 10 // Default limit
+	}
+	offset := (page - 1) * limit
+
+	isUserAdmin := containsString(roles, "admin")
+
+	log.Printf("[SVC_DEBUG] ListAllPublicSurveys: UserID: %d, IsAdmin: %t, Page: %d, Limit: %d, Offset: %d", userID, isUserAdmin, page, limit, offset)
+	// The repository method will handle filtering by is_active for non-admins if that's the desired logic.
+	surveys, total, err := s.repo.ListAllSurveys(ctx, isUserAdmin, offset, limit)
+	if err != nil {
+		log.Printf("[SVC_ERROR] ListAllPublicSurveys: Error from repository: %v", err)
+		return nil, 0, fmt.Errorf("failed to list all surveys: %w", err)
+	}
+	return surveys, total, nil
 }

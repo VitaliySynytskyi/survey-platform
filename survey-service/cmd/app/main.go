@@ -87,7 +87,8 @@ func main() {
 		{
 			surveyHandler := handlers.NewSurveyHandler(surveyService)
 			surveys.POST("", surveyHandler.CreateSurvey)
-			surveys.GET("", surveyHandler.GetSurveys)
+			surveys.GET("/me", surveyHandler.GetMySurveys)
+			surveys.GET("/all", surveyHandler.GetAllSurveysPublic)
 			surveys.GET("/:id", surveyHandler.GetSurvey)
 			surveys.PUT("/:id", surveyHandler.UpdateSurvey)
 			surveys.DELETE("/:id", surveyHandler.DeleteSurvey)

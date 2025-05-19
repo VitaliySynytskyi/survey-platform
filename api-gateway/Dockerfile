@@ -10,7 +10,18 @@ RUN echo 'module github.com/survey-app/api-gateway' > go.mod && \
 # Copy source code
 COPY . .
 
+# Copy go.mod and go.sum files to leverage Docker cache
+# COPY go.mod go.sum ./
+
+# Download all dependencies. Dependencies will be cached if the go.mod and go.sum files are not changed
+# RUN go mod download
+
+# Install git for direct go get
+RUN apk add --no-cache git
+
 # Reset go.mod and install specific compatible versions
+ENV GOPROXY=direct
+ENV GOSUMDB=off
 RUN rm -f go.mod go.sum && \
     echo 'module github.com/survey-app/api-gateway' > go.mod && \
     echo '' >> go.mod && \

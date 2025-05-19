@@ -4,9 +4,9 @@
     <v-card class="mb-6 pa-6 rounded-xl" elevation="2">
       <v-row>
         <v-col cols="12" md="8">
-          <h1 class="text-h4 font-weight-bold mb-2">My Surveys Dashboard</h1>
+          <h1 class="text-h4 font-weight-bold mb-2">Surveys Dashboard</h1>
           <p class="text-body-1 text-medium-emphasis">
-            Manage your surveys, view responses, and analyze results.
+            Browse surveys, manage your own, view responses, and analyze results.
           </p>
         </v-col>
         <v-col cols="12" md="4" class="d-flex align-center justify-end">
@@ -24,6 +24,18 @@
         </v-col>
       </v-row>
 
+      <!-- Survey View Tabs -->
+      <v-tabs
+        v-model="viewTab"
+        color="primary"
+        align-tabs="center"
+        class="mt-4"
+        density="comfortable"
+      >
+        <v-tab value="my-surveys" prepend-icon="mdi-account">My Surveys</v-tab>
+        <v-tab value="all-surveys" prepend-icon="mdi-earth">All Surveys</v-tab>
+      </v-tabs>
+
       <!-- Statistics Cards -->
       <v-row class="mt-6">
         <v-col cols="12" sm="6" md="3">
@@ -32,9 +44,9 @@
               <v-avatar color="primary" size="36" class="mr-3">
                 <v-icon color="white">mdi-poll</v-icon>
               </v-avatar>
-              <span class="text-body-2 font-weight-medium">Total Surveys</span>
+              <span class="text-body-2 font-weight-medium">Total {{ viewTab === 'my-surveys' ? 'My' : 'All' }} Surveys</span>
             </div>
-            <div class="text-h3 font-weight-bold mt-2">{{ surveys.length }}</div>
+            <div class="text-h3 font-weight-bold mt-2">{{ totalSurveysCount }}</div>
           </v-card>
         </v-col>
         <v-col cols="12" sm="6" md="3">
@@ -138,7 +150,7 @@
     <v-row v-if="loading">
       <v-col cols="12" class="text-center py-12">
         <v-progress-circular indeterminate color="primary" size="64"></v-progress-circular>
-        <div class="text-h6 mt-4">Loading your surveys...</div>
+        <div class="text-h6 mt-4">Loading surveys...</div>
       </v-col>
     </v-row>
 
@@ -173,8 +185,8 @@
       </v-col>
     </v-row>
 
-    <!-- Empty State -->
-    <v-row v-else-if="filteredSurveys.length === 0 && !searchQuery && statusFilter === 'all'">
+    <!-- Empty State - My Surveys -->
+    <v-row v-else-if="viewTab === 'my-surveys' && filteredSurveys.length === 0 && !searchQuery && statusFilter === 'all'">
       <v-col cols="12">
         <v-card class="pa-12 text-center rounded-xl" elevation="0" variant="outlined">
           <v-avatar color="primary" size="72" class="mb-6">
@@ -195,6 +207,34 @@
               class="px-6"
             >
               Create Your First Survey
+            </v-btn>
+          </v-card-actions>
+        </v-card>
+      </v-col>
+    </v-row>
+
+    <!-- Empty State - All Surveys -->
+    <v-row v-else-if="viewTab === 'all-surveys' && filteredSurveys.length === 0 && !searchQuery && statusFilter === 'all'">
+      <v-col cols="12">
+        <v-card class="pa-12 text-center rounded-xl" elevation="0" variant="outlined">
+          <v-avatar color="primary" size="72" class="mb-6">
+            <v-icon size="36" color="white">mdi-poll</v-icon>
+          </v-avatar>
+          <v-card-title class="text-h4 mb-2">No surveys available</v-card-title>
+          <v-card-text>
+            <p class="text-body-1 mb-6">There are no surveys available in the system yet.</p>
+          </v-card-text>
+          <v-card-actions class="justify-center">
+            <v-btn 
+              color="primary" 
+              prepend-icon="mdi-plus" 
+              to="/surveys/create"
+              rounded="pill"
+              size="large"
+              variant="flat"
+              class="px-6"
+            >
+              Create First Survey
             </v-btn>
           </v-card-actions>
         </v-card>
@@ -231,6 +271,17 @@
       <v-col v-for="survey in filteredSurveys" :key="survey.id" cols="12" sm="6" lg="4" class="survey-card-col">
         <v-card class="h-100 survey-card rounded-xl" elevation="2">
           <div class="status-indicator" :class="survey.is_active ? 'active' : 'inactive'"></div>
+          
+          <!-- Owner Badge -->
+          <v-badge
+            v-if="!isOwnSurvey(survey)"
+            content="Created by others"
+            color="info"
+            offset-x="15"
+            offset-y="15"
+            location="top end"
+          ></v-badge>
+          
           <v-card-item>
             <template v-slot:prepend>
               <v-avatar color="primary" size="40" class="mr-3">
@@ -242,6 +293,15 @@
               <div class="d-flex align-center">
                 <v-icon size="16" class="mr-1">mdi-calendar</v-icon>
                 <span>{{ formatDate(survey.created_at) }}</span>
+                <v-chip 
+                  v-if="survey.created_by_username" 
+                  class="ml-2" 
+                  size="x-small" 
+                  color="grey"
+                  label
+                >
+                  {{ survey.created_by_username }}
+                </v-chip>
               </div>
             </v-card-subtitle>
           </v-card-item>
@@ -282,7 +342,14 @@
             <v-btn variant="text" color="primary" :to="`/surveys/${survey.id}`" size="small">
               <v-icon>mdi-eye</v-icon>
             </v-btn>
-            <v-btn variant="text" color="secondary" :to="`/surveys/${survey.id}/edit`" size="small">
+            <v-btn 
+              variant="text" 
+              color="secondary" 
+              :to="`/surveys/${survey.id}/edit`" 
+              size="small"
+              :disabled="!canEdit(survey)"
+              v-tooltip="!canEdit(survey) ? 'You can only edit your own surveys' : null"
+            >
               <v-icon>mdi-pencil</v-icon>
             </v-btn>
             <v-btn variant="text" color="info" :to="`/surveys/${survey.id}/analytics`" size="small">
@@ -305,14 +372,23 @@
                   </template>
                   <v-list-item-title>View Responses</v-list-item-title>
                 </v-list-item>
-                <v-list-item @click="toggleStatus(survey)">
+                <v-list-item 
+                  @click="toggleStatus(survey)" 
+                  :disabled="!canEdit(survey)"
+                  v-if="canEdit(survey)"
+                >
                   <template v-slot:prepend>
                     <v-icon>{{ survey.is_active ? 'mdi-close-circle' : 'mdi-check-circle' }}</v-icon>
                   </template>
                   <v-list-item-title>{{ survey.is_active ? 'Deactivate' : 'Activate' }}</v-list-item-title>
                 </v-list-item>
-                <v-divider></v-divider>
-                <v-list-item @click="confirmDelete(survey)" class="text-error">
+                <v-divider v-if="canDelete(survey)"></v-divider>
+                <v-list-item 
+                  @click="confirmDelete(survey)" 
+                  class="text-error"
+                  :disabled="!canDelete(survey)"
+                  v-if="canDelete(survey)"
+                >
                   <template v-slot:prepend>
                     <v-icon color="error">mdi-delete</v-icon>
                   </template>
@@ -395,22 +471,82 @@ export default {
     });
     const router = useRouter();
     
-    // Filter and pagination state
+    // View mode and filter state
+    const viewTab = ref('my-surveys');
     const searchQuery = ref('');
     const statusFilter = ref('all');
     const sortBy = ref('newest');
     const page = ref(1);
     const pageSize = ref(6); // Number of surveys per page
+    const totalSurveysCount = ref(0); // For server-side pagination
+
+    // Check if the current user has admin role
+    const isAdmin = computed(() => {
+      return authStore.user?.role === 'admin';
+    });
+
+    // Check if a survey is owned by the current user
+    const isOwnSurvey = (survey) => {
+      console.log('isOwnSurvey check:', 
+        'Survey Creator ID:', survey.creator_id, 'Type:', typeof survey.creator_id, 
+        'Auth User ID:', authStore.user?.id, 'Type:', typeof authStore.user?.id, 
+        'Comparison Result:', survey.creator_id === authStore.user?.id
+      );
+      return survey.creator_id === authStore.user?.id;
+    };
+
+    // Determine if user can edit a survey (owner or admin)
+    const canEdit = (survey) => {
+      return isOwnSurvey(survey) || isAdmin.value;
+    };
+
+    // Determine if user can delete a survey (owner or admin)
+    const canDelete = (survey) => {
+      return isOwnSurvey(survey) || isAdmin.value;
+    };
 
     const fetchSurveys = async () => {
       loading.value = true;
       error.value = '';
       try {
-        const response = await surveyApi.getSurveys();
-        surveys.value = response.data.map(survey => ({
-          ...survey,
-          responses_count: Math.floor(Math.random() * 100) // Placeholder until we have real data
-        }));
+        let response;
+        const apiParams = {
+          page: page.value,
+          limit: pageSize.value
+        };
+        // Future improvement: Pass filter/sort params to backend if supported
+        // if (searchQuery.value) apiParams.search = searchQuery.value;
+        // if (statusFilter.value !== 'all') apiParams.status = statusFilter.value;
+        // if (sortBy.value) apiParams.sort_by = mapSortKey(sortBy.value);
+        
+        if (viewTab.value === 'my-surveys') {
+          response = await surveyApi.getUserSurveys(apiParams);
+        } else {
+          response = await surveyApi.getAllSurveys(apiParams);
+        }
+        
+        console.log('API Response Data:', response.data); // For debugging response structure
+
+        if (response.data && Array.isArray(response.data.data) && typeof response.data.total === 'number') {
+          surveys.value = response.data.data.map(survey => ({
+            ...survey,
+            responses_count: survey.responses_count ?? Math.floor(Math.random() * 100) // Placeholder with nullish coalescing
+          }));
+          totalSurveysCount.value = response.data.total;
+        } else if (response.data && Array.isArray(response.data.items) && typeof response.data.total === 'number') {
+          // Alternative common structure { items: [], total: X }
+           surveys.value = response.data.items.map(survey => ({
+            ...survey,
+            responses_count: survey.responses_count ?? Math.floor(Math.random() * 100)
+          }));
+          totalSurveysCount.value = response.data.total;
+        } else {
+          console.error('Unexpected API response structure for surveys:', response.data);
+          surveys.value = [];
+          totalSurveysCount.value = 0;
+          error.value = 'Failed to load surveys due to unexpected data format from server.';
+        }
+
       } catch (err) {
         console.error('Error fetching surveys:', err);
         const errorMessage = err.response?.data?.error || 'Failed to load surveys. Please try again later.';
@@ -419,6 +555,8 @@ export default {
         } else {
             error.value = errorMessage;
         }
+        surveys.value = []; // Clear surveys on error
+        totalSurveysCount.value = 0; // Reset count on error
       } finally {
         loading.value = false;
       }
@@ -445,12 +583,23 @@ export default {
     };
 
     const confirmDelete = (survey) => {
+      if (!canDelete(survey)) {
+        showSnackbar('You do not have permission to delete this survey.', 'error');
+        return;
+      }
+      
       selectedSurvey.value = survey;
       deleteDialog.value = true;
     };
 
     const deleteSurvey = async () => {
       if (!selectedSurvey.value) return;
+      
+      if (!canDelete(selectedSurvey.value)) {
+        showSnackbar('You do not have permission to delete this survey.', 'error');
+        deleteDialog.value = false;
+        return;
+      }
       
       deleteLoading.value = true;
       try {
@@ -468,6 +617,11 @@ export default {
     };
 
     const toggleStatus = async (survey) => {
+      if (!canEdit(survey)) {
+        showSnackbar('You do not have permission to edit this survey.', 'error');
+        return;
+      }
+      
       try {
         const updatedSurvey = {
           ...survey,
@@ -500,7 +654,7 @@ export default {
       };
     };
 
-    // Filter and sort
+    // Filter and sort (now operates on the current page of data from `surveys.value`)
     const filteredSurveys = computed(() => {
       let result = [...surveys.value];
       
@@ -539,21 +693,26 @@ export default {
     });
 
     // Apply pagination
-    const paginatedSurveys = computed(() => {
-      const start = (page.value - 1) * pageSize.value;
-      const end = start + pageSize.value;
-      return filteredSurveys.value.slice(start, end);
-    });
+    // const paginatedSurveys = computed(() => { // This is no longer needed with server-side pagination
+    //   const start = (page.value - 1) * pageSize.value;
+    //   const end = start + pageSize.value;
+    //   return filteredSurveys.value.slice(start, end);
+    // });
 
     const totalPages = computed(() => {
-      return Math.ceil(filteredSurveys.value.length / pageSize.value);
+      if (pageSize.value === 0) return 0;
+      return Math.ceil(totalSurveysCount.value / pageSize.value);
     });
 
     const resetFilters = () => {
       searchQuery.value = '';
       statusFilter.value = 'all';
       sortBy.value = 'newest';
-      page.value = 1;
+      if (page.value !== 1) {
+        page.value = 1;
+      } else {
+        fetchSurveys();
+      }
     };
 
     // Statistics getters
@@ -576,38 +735,101 @@ export default {
     });
 
     // Reset page when filters change
-    watch([searchQuery, statusFilter, sortBy], () => {
-      page.value = 1;
+    // watch([searchQuery, statusFilter, sortBy], () => { // OLD logic
+    //   page.value = 1;
+    //   // fetchSurveys(); // Fetch surveys after filter changes and page is reset to 1
+    // });
+
+    // // Refetch surveys when view mode changes // OLD logic
+    // watch(viewTab, () => {
+    //   page.value = 1; // Reset to page 1 when tab changes
+    //   fetchSurveys();
+    //   resetFilters(); 
+    // });
+    
+    // // Refetch surveys when page changes due to pagination component // OLD logic
+    // watch(page, (newPage, oldPage) => {
+    //   if (newPage !== oldPage) {
+    //     fetchSurveys();
+    //   }
+    // }, { immediate: false }); 
+
+    // ----- NEW REVISED WATCHERS AND RELATED LOGIC -----
+    onMounted(async () => {
+      if (!authStore.user) {
+        try {
+          await authStore.fetchUser();
+        } catch (error) {
+          console.error("Failed to fetch user details", error);
+        }
+      }
+      fetchSurveys(); // Initial fetch on page 1 with default filters
     });
 
-    onMounted(() => {
-      fetchSurveys();
+    // Handles pagination clicks or programmatic page changes
+    watch(page, (newPage, oldPage) => {
+      if (newPage !== oldPage) {
+        fetchSurveys();
+      }
+    }, { immediate: false }); // immediate: false is important if onMounted also fetches
+
+    // Watch for changes in individual filters or sort
+    watch([searchQuery, statusFilter, sortBy], () => {
+      // When a filter changes, we always want to go to page 1 and refetch.
+      if (page.value !== 1) {
+        page.value = 1; // Let page watcher handle the fetch
+      } else {
+        fetchSurveys(); // Already on page 1, but a filter changed
+      }
     });
+
+    // Watch for tab changes
+    watch(viewTab, () => {
+      // When tab changes, reset filters and fetch.
+      // This means setting page to 1 as well.
+      searchQuery.value = ''; // Manually reset filters tied to the tab change
+      statusFilter.value = 'all';
+      sortBy.value = 'newest';
+      if (page.value !== 1) {
+        page.value = 1; // Let page watcher handle the fetch
+      } else {
+        fetchSurveys(); // Already on page 1, but tab and its associated filters changed
+      }
+    });
+    // ----- END NEW REVISED WATCHERS ----- 
 
     return {
-      surveys,
+      surveys, // surveys ref now holds current page data
       loading,
       error,
       deleteDialog,
       selectedSurvey,
       deleteLoading,
       snackbar,
+      viewTab,
       searchQuery,
       statusFilter,
       sortBy,
-      page,
-      filteredSurveys: paginatedSurveys,
-      totalPages,
-      activeSurveys,
+      page, // Bound to v-pagination
+      // filteredSurveys: paginatedSurveys, // OLD: This was client-side pagination
+      filteredSurveys: filteredSurveys, // NEW: This is the computed prop for filtered/sorted current page data
+      totalPages, // Driven by totalSurveysCount from server
+      activeSurveys, // Note: This and other stats are now for the current page
       totalResponses,
       latestSurveyTitle,
+      totalSurveysCount, // Expose for the template (total surveys card)
+      isAdmin,
+      isOwnSurvey,
+      canEdit,
+      canDelete,
       formatDate,
       copyShareLink,
       confirmDelete,
       deleteSurvey,
       toggleStatus,
       resetFilters,
-      fetchSurveys
+      fetchSurveys,
+      showSnackbar
     };
   }
 };

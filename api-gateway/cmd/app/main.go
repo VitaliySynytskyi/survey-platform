@@ -108,7 +108,9 @@ func setupRouter(config Config) *gin.Engine {
 		userAccessibleSurveyRoutes := surveyRoutes.Group("")
 		userAccessibleSurveyRoutes.Use(jwtAuthMiddleware(config.JWTSecret))
 		{
-			userAccessibleSurveyRoutes.GET("", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys"))
+			// userAccessibleSurveyRoutes.GET("", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys")) // OLD generic route
+			userAccessibleSurveyRoutes.GET("/me", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys/me"))
+			userAccessibleSurveyRoutes.GET("/all", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys/all"))
 		}
 
 		// Routes for survey responses and exports - service layer in response-service will handle owner/admin logic.

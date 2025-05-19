@@ -114,30 +114,6 @@ func (h *SurveyHandler) CreateSurvey(c *gin.Context) {
 	c.JSON(http.StatusCreated, gin.H{"id": id, "message": "Survey created successfully"})
 }
 
-// GetSurveys handles GET /api/v1/surveys request
-func (h *SurveyHandler) GetSurveys(c *gin.Context) {
-	userCtx, err := getUserContext(c)
-	if err != nil {
-		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
-		return
-	}
-	// creatorID is no longer passed directly; service uses context
-
-	surveys, err := h.surveyService.GetSurveys(userCtx) // Pass userCtx, creatorID removed
-	if err != nil {
-		log.Printf("Error getting surveys: %v", err)
-		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve surveys"})
-		return
-	}
-
-	if surveys == nil {
-		c.JSON(http.StatusOK, []models.Survey{})
-		return
-	}
-
-	c.JSON(http.StatusOK, surveys)
-}
-
 // GetSurvey handles GET /api/v1/surveys/:id request
 func (h *SurveyHandler) GetSurvey(c *gin.Context) {
 	id, err := strconv.Atoi(c.Param("id"))
@@ -336,4 +312,81 @@ func (h *SurveyHandler) AddQuestion(c *gin.Context) {
 	}
 
 	c.JSON(http.StatusCreated, gin.H{"id": questionID, "message": "Question added successfully"})
+}
+
+// GetMySurveys handles GET /api/v1/surveys/me request
+func (h *SurveyHandler) GetMySurveys(c *gin.Context) {
+	userCtx, err := getUserContext(c)
+	if err != nil {
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 10
+	}
+	// Potentially add a max limit check, e.g., if limit > 100 { limit = 100 }
+
+	surveys, total, err := h.surveyService.ListUserSurveys(userCtx, page, limit)
+	if err != nil {
+		log.Printf("Error getting user surveys: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve your surveys"})
+		return
+	}
+
+	if surveys == nil {
+		surveys = []*models.Survey{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":  surveys,
+		"total": total,
+		"page":  page,
+		"limit": limit,
+	})
+}
+
+// GetAllSurveysPublic handles GET /api/v1/surveys/all request
+func (h *SurveyHandler) GetAllSurveysPublic(c *gin.Context) {
+	// For "all" surveys, user context is still useful for the service layer to potentially
+	// customize results or check if an admin is making the request for more comprehensive data.
+	userCtx, err := getUserContext(c)
+	if err != nil {
+		// Depending on policy, /all might be accessible without full auth for certain listed surveys.
+		// For now, assuming it requires same auth level as /me from gateway perspective.
+		c.JSON(http.StatusUnauthorized, gin.H{"error": err.Error()})
+		return
+	}
+
+	page, _ := strconv.Atoi(c.DefaultQuery("page", "1"))
+	limit, _ := strconv.Atoi(c.DefaultQuery("limit", "10"))
+	if page < 1 {
+		page = 1
+	}
+	if limit < 1 {
+		limit = 10
+	}
+
+	surveys, total, err := h.surveyService.ListAllPublicSurveys(userCtx, page, limit) // Service might filter by is_active or other criteria
+	if err != nil {
+		log.Printf("Error getting all public surveys: %v", err)
+		c.JSON(http.StatusInternalServerError, gin.H{"error": "Failed to retrieve all surveys"})
+		return
+	}
+
+	if surveys == nil {
+		surveys = []*models.Survey{}
+	}
+
+	c.JSON(http.StatusOK, gin.H{
+		"data":  surveys,
+		"total": total,
+		"page":  page,
+		"limit": limit,
+	})
 }

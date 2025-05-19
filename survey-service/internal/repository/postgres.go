@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -143,6 +144,150 @@ func (r *PostgresRepository) GetSurvey(ctx context.Context, id int) (*models.Sur
 	survey.Questions = questions
 
 	return &survey, nil
+}
+
+// ListSurveysByCreatorID retrieves paginated surveys created by a specific user.
+func (r *PostgresRepository) ListSurveysByCreatorID(ctx context.Context, creatorID int, offset, limit int) ([]*models.Survey, int, error) {
+	log.Printf("[REPO_IMPL] ListSurveysByCreatorID called for creatorID: %d, Offset: %d, Limit: %d", creatorID, offset, limit)
+
+	dataQuery := `
+		SELECT id, creator_id, title, description, is_active, start_date, end_date, created_at, updated_at
+		FROM surveys
+		WHERE creator_id = $1
+		ORDER BY updated_at DESC
+		LIMIT $2 OFFSET $3
+	`
+	countQuery := `SELECT COUNT(*) FROM surveys WHERE creator_id = $1`
+
+	// Get total count
+	var total int
+	err := r.db.QueryRow(ctx, countQuery, creatorID).Scan(&total)
+	if err != nil {
+		log.Printf("[REPO_ERROR] ListSurveysByCreatorID: r.db.QueryRow for count failed: %v", err)
+		return nil, 0, fmt.Errorf("failed to count surveys by creator ID %d: %w", creatorID, err)
+	}
+
+	rows, err := r.db.Query(ctx, dataQuery, creatorID, limit, offset)
+	if err != nil {
+		log.Printf("[REPO_ERROR] ListSurveysByCreatorID: r.db.Query for data failed: %v", err)
+		return nil, total, fmt.Errorf("failed to query surveys by creator ID %d: %w", creatorID, err)
+	}
+	defer rows.Close()
+
+	var surveys []*models.Survey
+	for rows.Next() {
+		var survey models.Survey
+		var startDate, endDate *time.Time
+		err := rows.Scan(
+			&survey.ID, &survey.CreatorID, &survey.Title, &survey.Description,
+			&survey.IsActive, &startDate, &endDate, &survey.CreatedAt, &survey.UpdatedAt,
+		)
+		if err != nil {
+			log.Printf("[REPO_ERROR] ListSurveysByCreatorID: rows.Scan failed: %v", err)
+			return nil, total, fmt.Errorf("failed to scan survey row: %w", err)
+		}
+		if startDate != nil {
+			survey.StartDate = *startDate
+		}
+		if endDate != nil {
+			survey.EndDate = *endDate
+		}
+
+		questions, err := r.GetQuestionsBySurveyID(ctx, survey.ID) // N+1 query
+		if err != nil {
+			log.Printf("[REPO_ERROR] ListSurveysByCreatorID: GetQuestionsBySurveyID for survey %d failed: %v", survey.ID, err)
+			return nil, total, fmt.Errorf("failed to get questions for survey ID %d: %w", survey.ID, err)
+		}
+		survey.Questions = questions
+		surveys = append(surveys, &survey)
+	}
+
+	if err = rows.Err(); err != nil {
+		log.Printf("[REPO_ERROR] ListSurveysByCreatorID: rows.Err() after loop: %v", err)
+		return nil, total, fmt.Errorf("error iterating survey rows: %w", err)
+	}
+
+	log.Printf("[REPO_INFO] ListSurveysByCreatorID: Found %d surveys (total %d) for creatorID: %d", len(surveys), total, creatorID)
+	return surveys, total, nil
+}
+
+// ListAllSurveys retrieves all surveys paginated (optionally filtered for non-admins).
+func (r *PostgresRepository) ListAllSurveys(ctx context.Context, isUserAdmin bool, offset, limit int) ([]*models.Survey, int, error) {
+	log.Printf("[REPO_IMPL] ListAllSurveys called. IsAdmin: %t, Offset: %d, Limit: %d", isUserAdmin, offset, limit)
+
+	var dataQuery strings.Builder
+	var countQuery strings.Builder
+	var queryArgs []interface{}
+	var countArgs []interface{}
+
+	dataQuery.WriteString("SELECT id, creator_id, title, description, is_active, start_date, end_date, created_at, updated_at FROM surveys")
+	countQuery.WriteString("SELECT COUNT(*) FROM surveys")
+
+	whereConditions := ""
+	if !isUserAdmin {
+		whereConditions = " WHERE is_active = $1"
+		queryArgs = append(queryArgs, true) // Argument for is_active in data query
+		countArgs = append(countArgs, true) // Argument for is_active in count query
+	}
+
+	dataQuery.WriteString(whereConditions)
+	countQuery.WriteString(whereConditions)
+
+	dataQuery.WriteString(fmt.Sprintf(" ORDER BY updated_at DESC LIMIT $%d OFFSET $%d", len(queryArgs)+1, len(queryArgs)+2))
+	queryArgs = append(queryArgs, limit, offset)
+
+	// Get total count
+	var total int
+	finalCountQuery := countQuery.String()
+	err := r.db.QueryRow(ctx, finalCountQuery, countArgs...).Scan(&total)
+	if err != nil {
+		log.Printf("[REPO_ERROR] ListAllSurveys: r.db.QueryRow for count failed: %v. Query: %s, Args: %v", err, finalCountQuery, countArgs)
+		return nil, 0, fmt.Errorf("failed to count all surveys: %w", err)
+	}
+
+	finalDataQuery := dataQuery.String()
+	rows, err := r.db.Query(ctx, finalDataQuery, queryArgs...)
+	if err != nil {
+		log.Printf("[REPO_ERROR] ListAllSurveys: r.db.Query for data failed: %v. Query: %s, Args: %v", err, finalDataQuery, queryArgs)
+		return nil, total, fmt.Errorf("failed to query all surveys: %w", err)
+	}
+	defer rows.Close()
+
+	var surveys []*models.Survey
+	for rows.Next() {
+		var survey models.Survey
+		var startDate, endDate *time.Time
+		err := rows.Scan(
+			&survey.ID, &survey.CreatorID, &survey.Title, &survey.Description,
+			&survey.IsActive, &startDate, &endDate, &survey.CreatedAt, &survey.UpdatedAt,
+		)
+		if err != nil {
+			log.Printf("[REPO_ERROR] ListAllSurveys: rows.Scan failed: %v", err)
+			return nil, total, fmt.Errorf("failed to scan survey row: %w", err)
+		}
+		if startDate != nil {
+			survey.StartDate = *startDate
+		}
+		if endDate != nil {
+			survey.EndDate = *endDate
+		}
+
+		questions, err := r.GetQuestionsBySurveyID(ctx, survey.ID) // N+1 query
+		if err != nil {
+			log.Printf("[REPO_ERROR] ListAllSurveys: GetQuestionsBySurveyID for survey %d failed: %v", survey.ID, err)
+			return nil, total, fmt.Errorf("failed to get questions for survey ID %d: %w", survey.ID, err)
+		}
+		survey.Questions = questions
+		surveys = append(surveys, &survey)
+	}
+
+	if err = rows.Err(); err != nil {
+		log.Printf("[REPO_ERROR] ListAllSurveys: rows.Err() after loop: %v", err)
+		return nil, total, fmt.Errorf("error iterating survey rows: %w", err)
+	}
+
+	log.Printf("[REPO_INFO] ListAllSurveys: Found %d surveys (total %d). IsAdmin: %t", len(surveys), total, isUserAdmin)
+	return surveys, total, nil
 }
 
 // GetSurveysByCreatorID retrieves all surveys created by a specific user, including their questions and options.
