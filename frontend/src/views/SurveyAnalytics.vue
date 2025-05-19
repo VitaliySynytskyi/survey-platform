@@ -33,9 +33,18 @@
             <v-card-text class="pa-5">
               <div class="d-flex align-center mb-3">
                 <v-icon color="primary" class="mr-3">mdi-account-multiple</v-icon>
-                <span class="text-body-1"><strong>Total Responses:</strong> {{ analyticsData.total_responses }}</span>
+                <span class="text-body-1">
+                  <strong>Total Responses:</strong> 
+                  <template v-if="loadingResponseCount">
+                    <v-progress-circular indeterminate size="16" width="2" color="primary" class="ml-1 mr-1"></v-progress-circular>
+                    <span class="text-caption ml-1">updating...</span>
+                  </template>
+                  <template v-else>
+                    {{ responseCount }}
+                  </template>
+                </span>
               </div>
-               <div class="d-flex align-center">
+              <div class="d-flex align-center">
                 <v-icon color="primary" class="mr-3">mdi-list-status</v-icon>
                 <span class="text-body-1"><strong>Total Questions:</strong> {{ analyticsData.question_analytics ? analyticsData.question_analytics.length : 0 }}</span>
               </div>
@@ -92,7 +101,7 @@
             <pre class="pa-3 elevation-1 rounded">{{ JSON.stringify(analyticsData, null, 2) }}</pre>
           </v-col>
       </v-row>
-      <v-row v-if="!loading && !error && analyticsData && analyticsData.total_responses === 0">
+            <v-row v-if="!loading && !error && analyticsData && responseCount === 0">
         <v-col cols="12">
             <v-alert type="info" prominent border="left" elevation="2" icon="mdi-information-outline">
                 <div class="text-h6">No Responses Yet</div>
@@ -131,6 +140,8 @@
   const error = ref(null);
   const showRawData = ref(false); // To toggle raw data view, for debugging
   const displayedTextResponsesCount = ref(5); // For text responses pagination
+  const loadingResponseCount = ref(false); // Added for tracking separate response count loading state
+  const responseCount = ref(0); // To store the accurate response count
 
   const chartColors = [
     'rgba(54, 162, 235, 0.8)', // Blue
@@ -180,6 +191,28 @@
       }
     }
   }));
+
+  // Function to fetch accurate response count
+  const fetchAccurateResponseCount = async () => {
+    if (!surveyId.value) return;
+    
+    loadingResponseCount.value = true;
+    try {
+      const response = await surveyApi.getSurveyResponses(surveyId.value, { count_only: true });
+      if (response.data && typeof response.data.count === 'number') {
+        responseCount.value = response.data.count;
+        // If we have analytics data, update it too for consistency
+        if (analyticsData.value) {
+          analyticsData.value.total_responses = responseCount.value;
+        }
+        console.log('Updated response count:', responseCount.value);
+      }
+    } catch (err) {
+      console.error('Failed to fetch accurate response count:', err);
+    } finally {
+      loadingResponseCount.value = false;
+    }
+  };
 
   const isChartable = (questionType) => {
       return ['single_choice', 'multiple_choice', 'dropdown', 'linear_scale', 'checkbox'].includes(questionType);
@@ -241,6 +274,14 @@
       if (analyticsResponse.status === 'fulfilled') {
           analyticsData.value = analyticsResponse.value.data;
           console.log('Full analytics data received:', JSON.parse(JSON.stringify(analyticsData.value))); // Log the data
+          
+          // Set initial response count from analytics data
+          if (analyticsData.value && typeof analyticsData.value.total_responses === 'number') {
+            responseCount.value = analyticsData.value.total_responses;
+          }
+          
+          // Fetch accurate response count after analytics data is loaded
+          await fetchAccurateResponseCount();
       } else {
           throw analyticsResponse.reason; // This will be caught by the main catch block
       }

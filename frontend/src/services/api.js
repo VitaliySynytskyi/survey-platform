@@ -20,6 +20,7 @@ export const surveyApi = {
   deleteSurvey: (id) => api.delete(`/api/v1/surveys/${id}`),
   updateSurveyStatus: (id, isActive) => api.patch(`/api/v1/surveys/${id}/status`, { is_active: isActive }),
   getSurveyAnalytics: (id) => api.get(`/api/v1/surveys/${id}/analytics`),
+  getSurveyResponses: (id, params) => api.get(`/api/v1/surveys/${id}/responses`, { params }),
   
   // Question related endpoints
   addQuestion: (surveyId, questionData) => api.post(`/api/v1/surveys/${surveyId}/questions`, questionData),

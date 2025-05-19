@@ -73,7 +73,7 @@
                 <v-progress-circular indeterminate size="24" color="white" class="mr-2"></v-progress-circular>
                 <span class="text-body-1">Loading...</span>
               </div>
-              <span v-else>{{ calculateTotalResponses() }}</span>
+              <span v-else>{{ totalResponsesCount }}</span>
             </div>
           </v-card>
         </v-col>
@@ -472,7 +472,7 @@
 <script>
 import { ref, onMounted, computed, watch } from 'vue';
 import { useAuthStore } from '../store/auth';
-import { surveyApi } from '../services/api';
+import { surveyApi, responseApi } from '../services/api';
 import { useRouter } from 'vue-router';
 
 export default {
@@ -762,55 +762,97 @@ export default {
       return surveys.value.filter(survey => survey.is_active).length;
     });
 
-    const calculateTotalResponses = () => {
-      return surveys.value.reduce((total, survey) => total + (survey.responses_count || 0), 0);
-    };
+    // Total responses reactivity
+    const totalResponsesCount = ref(0);
     
-    // Fetch response counts for each survey individually
+    // Fetch response counts for each survey individually and sum them up
     const fetchResponseCounts = async () => {
-      if (surveys.value.length === 0) return;
+      if (!surveys.value || surveys.value.length === 0) {
+        totalResponsesCount.value = 0;
+        loadingResponseCounts.value = false; // Ensure loading state is reset
+        console.log('fetchResponseCounts: No surveys to process or surveys array is empty.');
+        return;
+      }
       
+      console.log('fetchResponseCounts: Starting. Surveys to process:', surveys.value.map(s => s.id));
       loadingResponseCounts.value = true;
+      let calculatedTotal = 0;
       try {
-        // Create an array of promises to fetch response counts in parallel
         const countPromises = surveys.value.map(async (survey) => {
+          if (typeof survey.id === 'undefined') {
+            console.error('Survey object is missing an ID:', survey);
+            return { surveyId: undefined, count: 0, error: true };
+          }
           try {
-            const response = await surveyApi.getSurveyResponses(survey.id, { count_only: true });
-            if (response.data && typeof response.data.count === 'number') {
-              return {
-                surveyId: survey.id,
-                count: response.data.count
-              };
+            console.log(`Fetching count for survey ID: ${survey.id}`);
+            const response = await surveyApi.getSurveyResponses(survey.id, { count_only: true }); 
+            console.log(`Response for survey ID ${survey.id}:`, JSON.parse(JSON.stringify(response.data)));
+            
+            if (response.data) {
+              if (typeof response.data.count === 'number') {
+                // This is the initially expected format, keep for robustness
+                return {
+                  surveyId: survey.id,
+                  count: response.data.count
+                };
+              } else if (Array.isArray(response.data)) {
+                // This is the format we are actually observing from the logs
+                // The count is the length of the array of responses
+                return {
+                  surveyId: survey.id,
+                  count: response.data.length
+                };
+              }
             }
-            return null;
+            // If data is not in expected format or is missing
+            console.warn(`Unexpected data format or missing data for survey ID ${survey.id}. Response data:`, response.data);
+            return { surveyId: survey.id, count: 0 };
           } catch (err) {
-            console.error(`Failed to fetch response count for survey ${survey.id}:`, err);
-            return null;
+            console.error(`Failed to fetch response count for survey ID ${survey.id}:`, err);
+            return { surveyId: survey.id, count: 0, error: true }; 
           }
         });
         
-        // Wait for all requests to complete
-        const results = await Promise.all(countPromises);
+        const results = await Promise.allSettled(countPromises); // Use allSettled to get all results
         
-        // Update survey response counts
-        results.forEach(result => {
-          if (result) {
+        console.log('fetchResponseCounts: All count promises settled. Results:', JSON.parse(JSON.stringify(results)));
+
+        results.forEach(promiseResult => {
+          if (promiseResult.status === 'fulfilled' && promiseResult.value && typeof promiseResult.value.surveyId !== 'undefined') {
+            const result = promiseResult.value;
             const surveyIndex = surveys.value.findIndex(s => s.id === result.surveyId);
             if (surveyIndex !== -1) {
-              surveys.value[surveyIndex].responses_count = result.count;
+              // To ensure reactivity, we might need to re-assign the object or use Vue.set if not in <script setup>
+              // For <script setup> with ref, direct modification should be fine but let's be explicit
+              const surveyToUpdate = surveys.value[surveyIndex];
+              surveys.value[surveyIndex] = { ...surveyToUpdate, responses_count: result.count };
+              console.log(`Updated survey ID ${result.surveyId} in local array with count: ${result.count}`);
+            } else {
+              console.warn(`Survey ID ${result.surveyId} from count results not found in current surveys.value array.`);
             }
+            if (!result.error) { // Only add to total if there wasn't an error fetching this count
+                 calculatedTotal += result.count;
+            }
+          } else if (promiseResult.status === 'rejected') {
+            console.error('A promise for fetching count was rejected:', promiseResult.reason);
           }
         });
         
-        console.log('Updated survey response counts:', surveys.value.map(s => ({ 
+        totalResponsesCount.value = calculatedTotal;
+
+        console.log('Final updated individual survey response counts for cards:', JSON.parse(JSON.stringify(surveys.value.map(s => ({ 
           id: s.id, 
           title: s.title, 
           responses: s.responses_count 
-        })));
+        })))));
+        console.log('Final calculated total responses for summary card:', totalResponsesCount.value);
+
       } catch (err) {
-        console.error('Error fetching response counts:', err);
+        console.error('General error in fetchResponseCounts outer try-catch:', err);
+        totalResponsesCount.value = 0;
       } finally {
         loadingResponseCounts.value = false;
+        console.log('fetchResponseCounts: Finished.');
       }
     };
 
@@ -903,12 +945,11 @@ export default {
         }
       }
       
+      // First load surveys
       await fetchSurveys();
       
-      // Explicitly fetch response counts after initial surveys load
-      if (surveys.value.length > 0) {
-        fetchResponseCounts();
-      }
+      // Then separately fetch accurate response counts (not relying on counts in survey data)
+      fetchResponseCounts();
     });
 
     return {
@@ -929,7 +970,7 @@ export default {
       filteredSurveys: filteredSurveys, // NEW: This is the computed prop for filtered/sorted current page data
       totalPages, // Driven by totalSurveysCount from server
       activeSurveys, // Note: This and other stats are now for the current page
-      calculateTotalResponses,
+      totalResponsesCount, // Expose our new response count ref
       latestSurveyTitle,
       totalSurveysCount, // Expose for the template (total surveys card)
       isAdmin,
