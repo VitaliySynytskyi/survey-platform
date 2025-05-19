@@ -48,7 +48,7 @@
             </v-btn>
           </template>
           <v-list density="compact" width="200" elevation="3" rounded="lg">
-            <v-list-item prepend-icon="mdi-account-circle" title="Profile"></v-list-item>
+            <v-list-item to="/profile" prepend-icon="mdi-account-circle" title="Profile"></v-list-item>
             <v-list-item prepend-icon="mdi-cog" title="Settings"></v-list-item>
             <v-divider></v-divider>
             <v-list-item @click="logout" prepend-icon="mdi-logout" title="Logout" color="error"></v-list-item>
@@ -92,6 +92,11 @@
             to="/surveys/create"
             prepend-icon="mdi-plus-circle"
           ></v-list-item>
+          <v-list-item
+            title="Profile"
+            to="/profile"
+            prepend-icon="mdi-account-circle"
+          ></v-list-item>
           <v-divider class="my-2"></v-divider>
           <v-list-item
             title="Logout"
@@ -112,22 +117,45 @@
       </v-container>
     </v-main>
 
-    <!-- Modern Footer -->
-    <v-footer app class="text-center py-4">
-      <div class="w-100 d-flex align-center justify-center flex-column">
-        <div class="mb-2">
-          <v-btn icon variant="text" href="https://github.com" target="_blank" aria-label="GitHub">
-            <v-icon>mdi-github</v-icon>
-          </v-btn>
-          <v-btn icon variant="text" href="https://twitter.com" target="_blank" aria-label="Twitter">
-            <v-icon>mdi-twitter</v-icon>
-          </v-btn>
-          <v-btn icon variant="text" href="https://linkedin.com" target="_blank" aria-label="LinkedIn">
-            <v-icon>mdi-linkedin</v-icon>
-          </v-btn>
+    <!-- Call to Action Banner -->
+    <v-sheet v-if="!isAuthenticated" class="py-8 px-4 primary text-center text-white" elevation="2">
+      <v-container>
+        <h2 class="text-h4 mb-3 text-white">Ready to Get Started?</h2>
+        <p class="text-subtitle-1 mb-6 text-white">Join thousands of organizations who trust our platform for their survey needs.</p>
+        <v-btn 
+          size="large" 
+          variant="flat" 
+          color="white" 
+          class="text-primary font-weight-bold px-6"
+          to="/register"
+          rounded="pill"
+        >
+          Create Free Account
+        </v-btn>
+      </v-container>
+    </v-sheet>
+
+    <!-- Simplified Footer -->
+    <v-footer app height="auto" class="py-4" absolute>
+      <v-container>
+        <div class="d-flex flex-column flex-md-row align-center justify-space-between w-100">
+          <div class="mb-3 mb-md-0 text-center text-md-left">
+            <span class="text-primary font-weight-bold">Survey</span><span class="text-secondary font-weight-bold">Platform</span>
+            <span class="text-body-2 ml-2">© {{ new Date().getFullYear() }}</span>
+          </div>
+          <div class="d-flex">
+            <v-btn icon variant="text" href="https://github.com" target="_blank" aria-label="GitHub" size="small">
+              <v-icon>mdi-github</v-icon>
+            </v-btn>
+            <v-btn icon variant="text" href="https://twitter.com" target="_blank" aria-label="Twitter" size="small">
+              <v-icon>mdi-twitter</v-icon>
+            </v-btn>
+            <v-btn icon variant="text" href="https://linkedin.com" target="_blank" aria-label="LinkedIn" size="small">
+              <v-icon>mdi-linkedin</v-icon>
+            </v-btn>
+          </div>
         </div>
-        <div>© {{ new Date().getFullYear() }} Survey Platform - All rights reserved</div>
-      </div>
+      </v-container>
     </v-footer>
   </v-app>
 </template>
@@ -207,6 +235,19 @@ export default {
   padding: 24px;
   border-radius: 16px;
   margin-bottom: 24px;
+}
+
+/* Footer links */
+.footer-link {
+  color: inherit;
+  text-decoration: none;
+  opacity: 0.8;
+  transition: opacity 0.2s ease;
+}
+
+.footer-link:hover {
+  opacity: 1;
+  color: var(--v-primary-base);
 }
 
 /* Custom scrollbar */

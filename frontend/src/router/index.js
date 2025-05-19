@@ -14,6 +14,7 @@ const NotFound = () => import('../views/NotFound.vue')
 const SurveySuccess = () => import('../views/SurveySuccess.vue')
 const SurveyAnalytics = () => import('../views/SurveyAnalytics.vue')
 const ErrorPage = () => import('../views/ErrorPage.vue')
+const Profile = () => import('../views/Profile.vue')
 
 const routes = [
   {
@@ -37,6 +38,12 @@ const routes = [
     path: '/dashboard',
     name: 'Dashboard',
     component: Dashboard,
+    meta: { requiresAuth: true }
+  },
+  {
+    path: '/profile',
+    name: 'Profile',
+    component: Profile,
     meta: { requiresAuth: true }
   },
   {

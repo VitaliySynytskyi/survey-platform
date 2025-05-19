@@ -7,12 +7,59 @@
           <div class="text-center">
             <h1 class="text-h3 font-weight-bold mb-6">Join Our Community</h1>
             <p class="text-body-1 mb-8">Create an account to start building and sharing your own surveys.</p>
-            <v-img
-              src="https://placehold.co/500x400/ffffff/7209b7?text=Create+Account"
-              alt="Registration Illustration"
-              class="mx-auto mt-8"
-              max-width="400"
-            ></v-img>
+            <div class="register-illustration">
+              <svg viewBox="0 0 500 400" xmlns="http://www.w3.org/2000/svg" class="illustration">
+                <!-- Background shapes -->
+                <circle cx="250" cy="200" r="150" fill="rgba(255,255,255,0.1)" />
+                <circle cx="250" cy="200" r="100" fill="rgba(255,255,255,0.15)" />
+                
+                <!-- Person 1 -->
+                <circle cx="160" cy="180" r="30" fill="#ffffff" />
+                <path d="M160 140 v-15" stroke="white" stroke-width="3" />
+                <path d="M135 200 a 25 25 0 0 1 50 0" fill="#ffffff" />
+                
+                <!-- Person 2 -->
+                <circle cx="250" cy="180" r="35" fill="#ffffff" />
+                <path d="M250 140 v-15" stroke="white" stroke-width="3" />
+                <path d="M220 205 a 30 30 0 0 1 60 0" fill="#ffffff" />
+                
+                <!-- Person 3 -->
+                <circle cx="340" cy="180" r="30" fill="#ffffff" />
+                <path d="M340 140 v-15" stroke="white" stroke-width="3" />
+                <path d="M315 200 a 25 25 0 0 1 50 0" fill="#ffffff" />
+                
+                <!-- Survey form - person 1 -->
+                <rect x="120" y="230" width="80" height="100" rx="5" fill="white" />
+                <rect x="130" y="240" width="60" height="8" rx="2" fill="#e6e6ff" />
+                <rect x="130" y="255" width="60" height="8" rx="2" fill="#e6e6ff" />
+                <circle cx="135" cy="275" r="5" fill="#7209b7" />
+                <rect x="145" y="270" width="40" height="8" rx="2" fill="#e6e6ff" />
+                
+                <!-- Survey form - person 2 -->
+                <rect x="210" y="230" width="80" height="100" rx="5" fill="white" />
+                <rect x="220" y="240" width="60" height="8" rx="2" fill="#e6e6ff" />
+                <rect x="220" y="255" width="60" height="8" rx="2" fill="#e6e6ff" />
+                <circle cx="225" cy="275" r="5" fill="#7209b7" />
+                <rect x="235" y="270" width="40" height="8" rx="2" fill="#e6e6ff" />
+                
+                <!-- Survey form - person 3 -->
+                <rect x="300" y="230" width="80" height="100" rx="5" fill="white" />
+                <rect x="310" y="240" width="60" height="8" rx="2" fill="#e6e6ff" />
+                <rect x="310" y="255" width="60" height="8" rx="2" fill="#e6e6ff" />
+                <circle cx="315" cy="275" r="5" fill="#7209b7" />
+                <rect x="325" y="270" width="40" height="8" rx="2" fill="#e6e6ff" />
+                
+                <!-- Connecting lines -->
+                <path d="M160 220 L160 230" stroke="white" stroke-width="2" />
+                <path d="M250 220 L250 230" stroke="white" stroke-width="2" />
+                <path d="M340 220 L340 230" stroke="white" stroke-width="2" />
+                
+                <!-- Decorative Elements -->
+                <circle cx="100" cy="100" r="20" fill="rgba(255,255,255,0.2)" />
+                <circle cx="400" cy="320" r="15" fill="rgba(255,255,255,0.2)" />
+                <circle cx="130" cy="350" r="25" fill="rgba(255,255,255,0.1)" />
+              </svg>
+            </div>
           </div>
         </div>
       </v-col>
@@ -246,5 +293,30 @@ export default {
 
 .v-text-field--outlined .v-input__slot:hover {
   border-color: var(--v-primary-base) !important;
+}
+
+.register-illustration {
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.illustration {
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 10px 20px rgba(0,0,0,0.15));
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
 }
 </style> 

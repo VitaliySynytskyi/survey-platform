@@ -66,9 +66,15 @@
               <v-avatar color="info" size="36" class="mr-3">
                 <v-icon color="white">mdi-account-multiple</v-icon>
               </v-avatar>
-              <span class="text-body-2 font-weight-medium">Total Responses</span>
+              <div class="text-body-2 font-weight-medium">Total Responses</div>
             </div>
-            <div class="text-h3 font-weight-bold mt-2">{{ totalResponses }}</div>
+            <div class="text-h3 font-weight-bold mt-2">
+              <div v-if="loadingResponseCounts">
+                <v-progress-circular indeterminate size="24" color="white" class="mr-2"></v-progress-circular>
+                <span class="text-body-1">Loading...</span>
+              </div>
+              <span v-else>{{ calculateTotalResponses() }}</span>
+            </div>
           </v-card>
         </v-col>
         <v-col cols="12" sm="6" md="3">
@@ -273,14 +279,16 @@
           <div class="status-indicator" :class="survey.is_active ? 'active' : 'inactive'"></div>
           
           <!-- Owner Badge -->
-          <v-badge
-            v-if="!isOwnSurvey(survey)"
-            content="Created by others"
-            color="info"
-            offset-x="15"
-            offset-y="15"
-            location="top end"
-          ></v-badge>
+          <div v-if="!isOwnSurvey(survey)" class="ownership-badge">
+            <v-chip
+              color="info"
+              size="small"
+              label
+              class="font-weight-medium"
+            >
+              Created by others
+            </v-chip>
+          </div>
           
           <v-card-item>
             <template v-slot:prepend>
@@ -329,9 +337,11 @@
                 size="small"
                 color="primary"
                 variant="tonal"
-                class="text-caption"
+                class="text-caption d-flex align-center"
               >
-                {{ survey.responses_count || 0 }} responses
+                <v-icon size="16" start>mdi-message-reply-text</v-icon>
+                <v-progress-circular v-if="loadingResponseCounts" indeterminate size="12" width="2" color="primary" class="mr-1"></v-progress-circular>
+                <span class="font-weight-medium ml-1">{{ survey.responses_count || 0 }} responses</span>
               </v-chip>
             </div>
           </v-card-text>
@@ -352,7 +362,14 @@
             >
               <v-icon>mdi-pencil</v-icon>
             </v-btn>
-            <v-btn variant="text" color="info" :to="`/surveys/${survey.id}/analytics`" size="small">
+            <v-btn 
+              variant="text" 
+              color="info" 
+              :to="`/surveys/${survey.id}/analytics`" 
+              size="small"
+              :disabled="!canViewAnalytics(survey)"
+              v-tooltip="!canViewAnalytics(survey) ? 'You can only view analytics for your own surveys' : null"
+            >
               <v-icon>mdi-chart-bar</v-icon>
             </v-btn>
             <v-btn variant="text" @click="copyShareLink(survey.id)" size="small">
@@ -366,7 +383,11 @@
                 </v-btn>
               </template>
               <v-list density="compact" min-width="200">
-                <v-list-item :to="`/surveys/${survey.id}/responses`">
+                <v-list-item 
+                  :to="`/surveys/${survey.id}/responses`" 
+                  :disabled="!canViewResponses(survey)"
+                  v-tooltip="!canViewResponses(survey) ? 'You can only view responses for your own surveys' : null"
+                >
                   <template v-slot:prepend>
                     <v-icon>mdi-format-list-bulleted</v-icon>
                   </template>
@@ -460,6 +481,7 @@ export default {
     const authStore = useAuthStore();
     const surveys = ref([]);
     const loading = ref(false);
+    const loadingResponseCounts = ref(false);
     const error = ref('');
     const deleteDialog = ref(false);
     const selectedSurvey = ref(null);
@@ -505,6 +527,16 @@ export default {
       return isOwnSurvey(survey) || isAdmin.value;
     };
 
+    // Determine if user can view analytics (owner or admin)
+    const canViewAnalytics = (survey) => {
+      return isOwnSurvey(survey) || isAdmin.value;
+    };
+
+    // Determine if user can view responses (owner or admin)
+    const canViewResponses = (survey) => {
+      return isOwnSurvey(survey) || isAdmin.value;
+    };
+
     const fetchSurveys = async () => {
       loading.value = true;
       error.value = '';
@@ -512,7 +544,8 @@ export default {
         let response;
         const apiParams = {
           page: page.value,
-          limit: pageSize.value
+          limit: pageSize.value,
+          include_responses: true // Explicitly request response counts
         };
         // Future improvement: Pass filter/sort params to backend if supported
         // if (searchQuery.value) apiParams.search = searchQuery.value;
@@ -530,22 +563,35 @@ export default {
         if (response.data && Array.isArray(response.data.data) && typeof response.data.total === 'number') {
           surveys.value = response.data.data.map(survey => ({
             ...survey,
-            responses_count: survey.responses_count ?? Math.floor(Math.random() * 100) // Placeholder with nullish coalescing
+            responses_count: typeof survey.responses_count === 'number' ? survey.responses_count : 0
           }));
           totalSurveysCount.value = response.data.total;
+          
+          // Fetch individual response counts if not included in the survey data
+          if (!surveys.value.some(survey => survey.responses_count > 0) && surveys.value.length > 0) {
+            await fetchResponseCounts();
+          }
         } else if (response.data && Array.isArray(response.data.items) && typeof response.data.total === 'number') {
           // Alternative common structure { items: [], total: X }
-           surveys.value = response.data.items.map(survey => ({
+          surveys.value = response.data.items.map(survey => ({
             ...survey,
-            responses_count: survey.responses_count ?? Math.floor(Math.random() * 100)
+            responses_count: typeof survey.responses_count === 'number' ? survey.responses_count : 0
           }));
           totalSurveysCount.value = response.data.total;
+          
+          // Fetch individual response counts if not included in the survey data
+          if (!surveys.value.some(survey => survey.responses_count > 0) && surveys.value.length > 0) {
+            await fetchResponseCounts();
+          }
         } else {
           console.error('Unexpected API response structure for surveys:', response.data);
           surveys.value = [];
           totalSurveysCount.value = 0;
           error.value = 'Failed to load surveys due to unexpected data format from server.';
         }
+        
+        // Debug response counts
+        console.log('Survey data with response counts:', surveys.value);
 
       } catch (err) {
         console.error('Error fetching surveys:', err);
@@ -623,12 +669,8 @@ export default {
       }
       
       try {
-        const updatedSurvey = {
-          ...survey,
-          is_active: !survey.is_active
-        };
-        
-        await surveyApi.updateSurvey(survey.id, updatedSurvey);
+        // Use the dedicated status update endpoint instead of full survey update
+        await surveyApi.updateSurveyStatus(survey.id, !survey.is_active);
         
         // Update local state
         const index = surveys.value.findIndex(s => s.id === survey.id);
@@ -720,9 +762,57 @@ export default {
       return surveys.value.filter(survey => survey.is_active).length;
     });
 
-    const totalResponses = computed(() => {
+    const calculateTotalResponses = () => {
       return surveys.value.reduce((total, survey) => total + (survey.responses_count || 0), 0);
-    });
+    };
+    
+    // Fetch response counts for each survey individually
+    const fetchResponseCounts = async () => {
+      if (surveys.value.length === 0) return;
+      
+      loadingResponseCounts.value = true;
+      try {
+        // Create an array of promises to fetch response counts in parallel
+        const countPromises = surveys.value.map(async (survey) => {
+          try {
+            const response = await surveyApi.getSurveyResponses(survey.id, { count_only: true });
+            if (response.data && typeof response.data.count === 'number') {
+              return {
+                surveyId: survey.id,
+                count: response.data.count
+              };
+            }
+            return null;
+          } catch (err) {
+            console.error(`Failed to fetch response count for survey ${survey.id}:`, err);
+            return null;
+          }
+        });
+        
+        // Wait for all requests to complete
+        const results = await Promise.all(countPromises);
+        
+        // Update survey response counts
+        results.forEach(result => {
+          if (result) {
+            const surveyIndex = surveys.value.findIndex(s => s.id === result.surveyId);
+            if (surveyIndex !== -1) {
+              surveys.value[surveyIndex].responses_count = result.count;
+            }
+          }
+        });
+        
+        console.log('Updated survey response counts:', surveys.value.map(s => ({ 
+          id: s.id, 
+          title: s.title, 
+          responses: s.responses_count 
+        })));
+      } catch (err) {
+        console.error('Error fetching response counts:', err);
+      } finally {
+        loadingResponseCounts.value = false;
+      }
+    };
 
     const latestSurveyTitle = computed(() => {
       if (surveys.value.length === 0) return null;
@@ -755,21 +845,16 @@ export default {
     // }, { immediate: false }); 
 
     // ----- NEW REVISED WATCHERS AND RELATED LOGIC -----
-    onMounted(async () => {
-      if (!authStore.user) {
-        try {
-          await authStore.fetchUser();
-        } catch (error) {
-          console.error("Failed to fetch user details", error);
-        }
-      }
-      fetchSurveys(); // Initial fetch on page 1 with default filters
-    });
 
     // Handles pagination clicks or programmatic page changes
     watch(page, (newPage, oldPage) => {
       if (newPage !== oldPage) {
-        fetchSurveys();
+        fetchSurveys().then(() => {
+          // Refresh response counts when page changes
+          if (surveys.value.length > 0) {
+            fetchResponseCounts();
+          }
+        });
       }
     }, { immediate: false }); // immediate: false is important if onMounted also fetches
 
@@ -779,7 +864,12 @@ export default {
       if (page.value !== 1) {
         page.value = 1; // Let page watcher handle the fetch
       } else {
-        fetchSurveys(); // Already on page 1, but a filter changed
+        fetchSurveys().then(() => {
+          // Refresh response counts when filters change
+          if (surveys.value.length > 0) {
+            fetchResponseCounts();
+          }
+        });
       }
     });
 
@@ -793,14 +883,38 @@ export default {
       if (page.value !== 1) {
         page.value = 1; // Let page watcher handle the fetch
       } else {
-        fetchSurveys(); // Already on page 1, but tab and its associated filters changed
+        fetchSurveys().then(() => {
+          // Refetch response counts when the view tab changes
+          if (surveys.value.length > 0) {
+            fetchResponseCounts();
+          }
+        });
       }
     });
     // ----- END NEW REVISED WATCHERS ----- 
 
+    // Call fetchResponseCounts after initial surveys are loaded
+    onMounted(async () => {
+      if (!authStore.user) {
+        try {
+          await authStore.fetchUser();
+        } catch (error) {
+          console.error("Failed to fetch user details", error);
+        }
+      }
+      
+      await fetchSurveys();
+      
+      // Explicitly fetch response counts after initial surveys load
+      if (surveys.value.length > 0) {
+        fetchResponseCounts();
+      }
+    });
+
     return {
       surveys, // surveys ref now holds current page data
       loading,
+      loadingResponseCounts,
       error,
       deleteDialog,
       selectedSurvey,
@@ -815,13 +929,15 @@ export default {
       filteredSurveys: filteredSurveys, // NEW: This is the computed prop for filtered/sorted current page data
       totalPages, // Driven by totalSurveysCount from server
       activeSurveys, // Note: This and other stats are now for the current page
-      totalResponses,
+      calculateTotalResponses,
       latestSurveyTitle,
       totalSurveysCount, // Expose for the template (total surveys card)
       isAdmin,
       isOwnSurvey,
       canEdit,
       canDelete,
+      canViewAnalytics,
+      canViewResponses,
       formatDate,
       copyShareLink,
       confirmDelete,
@@ -829,6 +945,7 @@ export default {
       toggleStatus,
       resetFilters,
       fetchSurveys,
+      fetchResponseCounts,
       showSnackbar
     };
   }
@@ -886,6 +1003,20 @@ export default {
 
 .stat-card:hover {
   transform: translateY(-5px);
+}
+
+.survey-badge {
+  position: absolute;
+  top: 0;
+  right: 0;
+  z-index: 1;
+}
+
+.ownership-badge {
+  position: absolute;
+  top: 8px;
+  right: 8px;
+  z-index: 2;
 }
 
 @keyframes fadeIn {

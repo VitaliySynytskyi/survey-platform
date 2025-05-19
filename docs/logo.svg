@@ -1,0 +1,56 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg width="200px" height="200px" viewBox="0 0 200 200" version="1.1" xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink">
+    <defs>
+        <linearGradient x1="0%" y1="0%" x2="100%" y2="100%" id="logoGradient">
+            <stop stop-color="#4361EE" offset="0%"></stop>
+            <stop stop-color="#7209B7" offset="100%"></stop>
+        </linearGradient>
+        <filter id="shadow" x="-20%" y="-20%" width="140%" height="140%">
+            <feGaussianBlur in="SourceAlpha" stdDeviation="3"></feGaussianBlur>
+            <feOffset dx="0" dy="2" result="offsetblur"></feOffset>
+            <feComponentTransfer>
+                <feFuncA type="linear" slope="0.3"></feFuncA>
+            </feComponentTransfer>
+            <feMerge>
+                <feMergeNode></feMergeNode>
+                <feMergeNode in="SourceGraphic"></feMergeNode>
+            </feMerge>
+        </filter>
+    </defs>
+    <g stroke="none" stroke-width="1" fill="none" fill-rule="evenodd">
+        <!-- Background circle -->
+        <circle fill="url(#logoGradient)" cx="100" cy="100" r="90" filter="url(#shadow)"></circle>
+        
+        <!-- Survey Form Icon -->
+        <g transform="translate(45, 40)" fill="#FFFFFF">
+            <!-- Form Outline -->
+            <rect x="0" y="0" width="110" height="130" rx="10"></rect>
+            
+            <!-- Form Lines -->
+            <rect fill="url(#logoGradient)" x="0" y="0" width="110" height="130" rx="10" opacity="0.9"></rect>
+            
+            <!-- Form Elements -->
+            <rect fill="#FFFFFF" x="15" y="20" width="80" height="12" rx="2"></rect>
+            
+            <!-- Radio Button 1 - Selected -->
+            <circle fill="#FFFFFF" cx="25" cy="50" r="8"></circle>
+            <circle fill="url(#logoGradient)" cx="25" cy="50" r="4"></circle>
+            <rect fill="#FFFFFF" x="40" y="46" width="55" height="8" rx="2"></rect>
+            
+            <!-- Radio Button 2 -->
+            <circle fill="#FFFFFF" cx="25" cy="75" r="8"></circle>
+            <rect fill="#FFFFFF" x="40" y="71" width="45" height="8" rx="2"></rect>
+            
+            <!-- Checkbox - Checked -->
+            <rect fill="#FFFFFF" x="17" y="95" width="16" height="16" rx="3"></rect>
+            <path d="M21,101 L25,105 L33,97" stroke="#4361EE" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"></path>
+            <rect fill="#FFFFFF" x="40" y="99" width="50" height="8" rx="2"></rect>
+            
+            <!-- Submit Button -->
+            <rect fill="#FFFFFF" x="25" y="125" width="60" height="20" rx="10" opacity="0.9"></rect>
+        </g>
+        
+        <!-- Checkmark/Accent -->
+        <path d="M145,70 L155,80 L175,60" stroke="#FFFFFF" stroke-width="6" stroke-linecap="round" stroke-linejoin="round"></path>
+    </g>
+</svg> 

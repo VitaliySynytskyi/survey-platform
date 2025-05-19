@@ -31,7 +31,8 @@ export const surveyApi = {
 export const responseApi = {
   submitResponse: (responseData) => api.post('/api/v1/responses', responseData),
   getResponses: (surveyId) => api.get('/api/v1/responses', { params: { survey_id: surveyId } }),
-  getResponseSummary: (surveyId) => api.get('/api/v1/responses/summary', { params: { survey_id: surveyId } })
+  getResponseSummary: (surveyId) => api.get('/api/v1/responses/summary', { params: { survey_id: surveyId } }),
+  getResponsesCount: (surveyId) => api.get('/api/v1/responses/count', { params: { survey_id: surveyId } })
 }
 
 export default api 

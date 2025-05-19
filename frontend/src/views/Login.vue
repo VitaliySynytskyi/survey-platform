@@ -7,12 +7,46 @@
           <div class="text-center">
             <h1 class="text-h3 font-weight-bold mb-6">Welcome Back</h1>
             <p class="text-body-1 mb-8">Sign in to continue your journey with Survey Platform.</p>
-            <v-img
-              src="https://placehold.co/500x400/ffffff/4361ee?text=Survey+Illustration"
-              alt="Survey Illustration"
-              class="mx-auto mt-8"
-              max-width="400"
-            ></v-img>
+            <div class="login-illustration">
+              <svg viewBox="0 0 500 400" xmlns="http://www.w3.org/2000/svg" class="illustration">
+                <!-- Background shapes -->
+                <circle cx="250" cy="200" r="150" fill="rgba(255,255,255,0.1)" />
+                <circle cx="250" cy="200" r="100" fill="rgba(255,255,255,0.15)" />
+                
+                <!-- Document/Survey -->
+                <rect x="150" y="100" width="200" height="250" rx="10" fill="white" />
+                
+                <!-- Document Header -->
+                <rect x="170" y="120" width="160" height="20" rx="5" fill="#e6e6ff" />
+                
+                <!-- Document Content -->
+                <rect x="170" y="160" width="160" height="15" rx="3" fill="#e6e6ff" />
+                <rect x="170" y="185" width="160" height="15" rx="3" fill="#e6e6ff" />
+                
+                <!-- Radio Buttons -->
+                <circle cx="180" cy="220" r="8" fill="#4361ee" stroke="white" stroke-width="2" />
+                <rect x="195" y="215" width="120" height="10" rx="3" fill="#e6e6ff" />
+                
+                <circle cx="180" cy="250" r="8" fill="#e6e6ff" stroke="#4361ee" stroke-width="2" />
+                <rect x="195" y="245" width="120" height="10" rx="3" fill="#e6e6ff" />
+                
+                <circle cx="180" cy="280" r="8" fill="#e6e6ff" stroke="#4361ee" stroke-width="2" />
+                <rect x="195" y="275" width="120" height="10" rx="3" fill="#e6e6ff" />
+                
+                <!-- Submit Button -->
+                <rect x="190" y="310" width="120" height="25" rx="12.5" fill="#4361ee" />
+                
+                <!-- Person/User -->
+                <circle cx="385" cy="180" r="30" fill="#7209b7" />
+                <path d="M385 140 v-20" stroke="white" stroke-width="3" />
+                <path d="M360 200 a 25 25 0 0 1 50 0" fill="#7209b7" />
+                
+                <!-- Decorative Elements -->
+                <circle cx="100" cy="100" r="20" fill="rgba(255,255,255,0.2)" />
+                <circle cx="400" cy="320" r="15" fill="rgba(255,255,255,0.2)" />
+                <circle cx="130" cy="350" r="25" fill="rgba(255,255,255,0.1)" />
+              </svg>
+            </div>
           </div>
         </div>
       </v-col>
@@ -199,5 +233,30 @@ export default {
 
 .theme--light.v-text-field .v-input__slot:hover {
   border-color: var(--v-primary-base) !important;
+}
+
+.login-illustration {
+  width: 100%;
+  max-width: 400px;
+  margin: 0 auto;
+}
+
+.illustration {
+  width: 100%;
+  height: auto;
+  filter: drop-shadow(0 10px 20px rgba(0,0,0,0.15));
+  animation: float 6s ease-in-out infinite;
+}
+
+@keyframes float {
+  0% {
+    transform: translateY(0px);
+  }
+  50% {
+    transform: translateY(-20px);
+  }
+  100% {
+    transform: translateY(0px);
+  }
 }
 </style> 
