@@ -67,7 +67,7 @@ const checkSurveyOwnership = async () => {
     
     // Check if current user is the creator or is admin
     isOwnSurvey.value = survey?.creator_id === authStore.user?.id || 
-                        authStore.user?.role === 'admin';
+                        (authStore.user?.roles && authStore.user.roles.includes('admin'));
   } catch (error) {
     console.error('Error checking survey ownership:', error);
     isOwnSurvey.value = false;

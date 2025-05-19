@@ -504,7 +504,8 @@ export default {
 
     // Check if the current user has admin role
     const isAdmin = computed(() => {
-      return authStore.user?.role === 'admin';
+      if (!authStore.user || !authStore.user.roles) return false;
+      return authStore.user.roles.includes('admin');
     });
 
     // Check if a survey is owned by the current user

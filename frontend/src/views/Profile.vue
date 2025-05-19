@@ -10,7 +10,7 @@
             </v-avatar>
             <h2 class="text-h4 font-weight-bold">{{ user?.name || user?.username }}</h2>
             <p class="text-body-1 text-medium-emphasis">{{ user?.email }}</p>
-            <v-chip color="primary" size="small" class="mt-2">{{ user?.role === 'admin' ? 'Administrator' : 'User' }}</v-chip>
+            <v-chip color="primary" size="small" class="mt-2">{{ isAdmin ? 'Administrator' : 'User' }}</v-chip>
           </div>
           
           <v-list class="transparent">
@@ -35,7 +35,7 @@
                 <v-icon color="primary">mdi-badge-account-outline</v-icon>
               </template>
               <v-list-item-title>Role</v-list-item-title>
-              <v-list-item-subtitle>{{ user?.role === 'admin' ? 'Administrator' : 'User' }}</v-list-item-subtitle>
+              <v-list-item-subtitle>{{ isAdmin ? 'Administrator' : 'User' }}</v-list-item-subtitle>
             </v-list-item>
             
             <v-list-item>
@@ -403,6 +403,12 @@ export default {
       color: 'success'
     });
     
+    // Additional computed property
+    const isAdmin = computed(() => {
+      if (!user.value || !user.value.roles) return false;
+      return user.value.roles.includes('admin');
+    });
+    
     // Fetch user data
     const fetchUserData = async () => {
       try {
@@ -647,6 +653,7 @@ export default {
     return {
       user,
       stats,
+      isAdmin,
       recentActivity,
       editProfileDialog,
       editProfileForm,
