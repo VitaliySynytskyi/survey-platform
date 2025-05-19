@@ -10,6 +10,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/survey-app/response-service/internal/contextkeys"
 	"github.com/survey-app/response-service/internal/models"
 	"github.com/survey-app/response-service/internal/repository"
 	"go.mongodb.org/mongo-driver/bson/primitive"
@@ -43,17 +44,37 @@ func NewResponseService(repo repository.ResponseRepositoryInterface, surveyServi
 // getSurveyDetails fetches full survey details from the survey-service
 func (s *ResponseService) getSurveyDetails(ctx context.Context, surveyID int) (*models.SurveyDetailsFromService, error) {
 	surveyURL := fmt.Sprintf("%s/api/v1/surveys/%d", s.surveyServiceURL, surveyID)
+	log.Printf("[SERVICE_INFO] getSurveyDetails: Calling Survey Service at URL: %s", surveyURL)
+
 	httpReq, err := http.NewRequestWithContext(ctx, "GET", surveyURL, nil)
 	if err != nil {
+		log.Printf("[SERVICE_ERROR] getSurveyDetails: Failed to create request to survey-service for SurveyID %d: %v", surveyID, err)
 		return nil, fmt.Errorf("failed to create request to survey-service: %w", err)
+	}
+
+	// Propagate X-User-ID and X-User-Roles from context if they exist
+	if userIDVal := ctx.Value(contextkeys.UserIDKey); userIDVal != nil {
+		if userID, ok := userIDVal.(int); ok {
+			httpReq.Header.Set("X-User-ID", strconv.Itoa(userID))
+			log.Printf("[SERVICE_INFO] getSurveyDetails: Forwarding X-User-ID: %d to survey-service", userID)
+		}
+	}
+	if userRolesVal := ctx.Value(contextkeys.UserRolesKey); userRolesVal != nil {
+		if roles, ok := userRolesVal.([]string); ok {
+			rolesStr := fmt.Sprintf("%v", roles) // Produces "[role1 role2 ...]"
+			httpReq.Header.Set("X-User-Roles", rolesStr)
+			log.Printf("[SERVICE_INFO] getSurveyDetails: Forwarding X-User-Roles: %s to survey-service", rolesStr)
+		}
 	}
 
 	httpResp, err := s.httpClient.Do(httpReq)
 	if err != nil {
+		log.Printf("[SERVICE_ERROR] getSurveyDetails: Failed to call survey-service for SurveyID %d: %v", surveyID, err)
 		return nil, fmt.Errorf("failed to call survey-service: %w", err)
 	}
 	defer httpResp.Body.Close()
 
+	log.Printf("[SERVICE_INFO] getSurveyDetails: Response status from survey-service for SurveyID %d: %d", surveyID, httpResp.StatusCode)
 	if httpResp.StatusCode == http.StatusNotFound {
 		return nil, errors.New("survey not found in survey-service")
 	}
@@ -64,6 +85,7 @@ func (s *ResponseService) getSurveyDetails(ctx context.Context, surveyID int) (*
 
 	var surveyDetails models.SurveyDetailsFromService
 	if err := json.NewDecoder(httpResp.Body).Decode(&surveyDetails); err != nil {
+		log.Printf("[SERVICE_ERROR] getSurveyDetails: Failed to decode response from survey-service for SurveyID %d: %v", surveyID, err)
 		return nil, fmt.Errorf("failed to decode response from survey-service: %w", err)
 	}
 	return &surveyDetails, nil
@@ -71,27 +93,42 @@ func (s *ResponseService) getSurveyDetails(ctx context.Context, surveyID int) (*
 
 // SubmitResponse handles the business logic for submitting a new survey response
 func (s *ResponseService) SubmitResponse(ctx context.Context, req *models.CreateResponseRequest) error {
+	log.Printf("[SERVICE_INFO] SubmitResponse: Attempting to submit response for SurveyID: %d, UserID: %v", req.SurveyID, req.UserID)
+	log.Printf("[SERVICE_INFO] SubmitResponse: Request Answers: %+v", req.Answers)
+
 	surveyDetails, err := s.getSurveyDetails(ctx, req.SurveyID)
 	if err != nil {
-		return err // Handles not found, service errors, decode errors
+		log.Printf("[SERVICE_ERROR] SubmitResponse: Failed to get survey details for SurveyID %d: %v", req.SurveyID, err)
+		return fmt.Errorf("failed to retrieve survey details (ID: %d): %w", req.SurveyID, err)
 	}
+	log.Printf("[SERVICE_INFO] SubmitResponse: Successfully fetched survey details for SurveyID %d: %+v", req.SurveyID, surveyDetails)
 
 	if !surveyDetails.IsActive {
+		log.Printf("[SERVICE_WARN] SubmitResponse: SurveyID %d is not active. Aborting submission.", req.SurveyID)
 		return errors.New("survey is not active and cannot accept new responses")
 	}
 
 	// TODO: Validate req.Answers against surveyDetails.Questions
 	// - Check if question IDs in answers are valid for the survey.
 	// - Check if answer values are consistent with question types (e.g., selected option ID is valid for single_choice).
+	log.Printf("[SERVICE_INFO] SubmitResponse: SurveyID %d is active. Proceeding with response creation.", req.SurveyID)
 
 	response := &models.Response{
 		SurveyID: req.SurveyID,
-		UserID:   req.UserID, // Assuming UserID is passed in CreateResponseRequest or obtained from context
+		UserID:   req.UserID, // UserID is now reliably set by the handler from X-User-ID or original req
 		Answers:  req.Answers,
 		// SubmittedAt will be set by the repository
 	}
 
-	return s.repo.CreateResponse(ctx, response)
+	log.Printf("[SERVICE_INFO] SubmitResponse: Attempting to create response in repository for SurveyID: %d", req.SurveyID)
+	err = s.repo.CreateResponse(ctx, response)
+	if err != nil {
+		log.Printf("[SERVICE_ERROR] SubmitResponse: Failed to create response in repository for SurveyID %d: %v", req.SurveyID, err)
+		return fmt.Errorf("failed to save response to database (SurveyID: %d): %w", req.SurveyID, err)
+	}
+
+	log.Printf("[SERVICE_INFO] SubmitResponse: Successfully created response for SurveyID: %d", req.SurveyID)
+	return nil
 }
 
 // GetSurveyResponses retrieves all responses for a specific survey

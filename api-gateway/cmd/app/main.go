@@ -85,48 +85,53 @@ func setupRouter(config Config) *gin.Engine {
 	surveyRoutes := r.Group("/api/v1/surveys")
 	{
 		// Public route for taking surveys (getting survey details)
-		surveyRoutes.GET("/:id", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys"))
+		surveyRoutes.GET("/:id", jwtAuthMiddleware(config.JWTSecret), createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys"))
 
-		// Protected routes for survey management (CRUD on surveys themselves)
-		protectedSurveyOpsRoutes := surveyRoutes.Group("") // For POST, PUT, DELETE on /api/v1/surveys and /api/v1/surveys/:id
-		protectedSurveyOpsRoutes.Use(jwtAuthMiddleware(config.JWTSecret))
-		protectedSurveyOpsRoutes.POST("", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys"))             // Create survey
-		protectedSurveyOpsRoutes.PUT("/:id", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys"))          // Update survey
-		protectedSurveyOpsRoutes.PATCH("/:id", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys"))        // Partially update survey (e.g. toggle active)
-		protectedSurveyOpsRoutes.PATCH("/:id/status", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys")) // Added for status update
-		protectedSurveyOpsRoutes.DELETE("/:id", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys"))       // Delete survey
-		// Get all surveys for the user (Dashboard)
-		protectedSurveyOpsRoutes.GET("", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys"))
+		// Routes for survey management (CRUD, analytics)
+		// Now protected by jwtAuthMiddleware; service layer handles owner/admin logic.
+		managedSurveyRoutes := surveyRoutes.Group("")
+		managedSurveyRoutes.Use(jwtAuthMiddleware(config.JWTSecret)) // Changed from roleAuthMiddleware("admin")
+		{
+			managedSurveyRoutes.POST("", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys"))             // Create survey
+			managedSurveyRoutes.PUT("/:id", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys"))          // Update survey
+			managedSurveyRoutes.PATCH("/:id", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys"))        // Partially update survey
+			managedSurveyRoutes.PATCH("/:id/status", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys")) // Update survey status
+			managedSurveyRoutes.DELETE("/:id", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys"))       // Delete survey
+			// Survey analytics - service layer will check ownership or admin role.
+			// Assuming analytics are now part of survey-service and it checks perms.
+			// If analytics were in response-service, it would also need to check X-User-ID/Roles or get survey creator info.
+			managedSurveyRoutes.GET("/:id/analytics", createReverseProxy(config.ResponseServiceURL, "/api/v1/surveys")) // Proxy to response-service for analytics
+		}
 
-		// Protected route for getting responses for a specific survey
-		// This will be handled by response-service
-		// The path in response-service is /api/v1/surveys/:surveyId/responses
-		// The proxy needs to ensure the :id parameter is passed correctly.
-		// The createReverseProxy function uses c.Request.URL.Path, so it should forward /api/v1/surveys/:id/responses as is.
-		surveyRoutes.GET("/:id/responses", jwtAuthMiddleware(config.JWTSecret), createReverseProxy(config.ResponseServiceURL, "/api/v1/surveys")) // Note: serviceBasePath for proxy might be just /api/v1 or similar if backend expects it trimmed.
-		// For now, assuming response-service router handles /api/v1/surveys/:surveyId/responses
+		// Get all surveys for the user (Dashboard) - Authenticated users can see their surveys
+		// This remains as jwtAuthMiddleware, service filters by owner or shows all for admin.
+		userAccessibleSurveyRoutes := surveyRoutes.Group("")
+		userAccessibleSurveyRoutes.Use(jwtAuthMiddleware(config.JWTSecret))
+		{
+			userAccessibleSurveyRoutes.GET("", createReverseProxy(config.SurveyServiceURL, "/api/v1/surveys"))
+		}
 
-		// Protected route for exporting responses for a specific survey
-		surveyRoutes.GET("/:id/responses/export", jwtAuthMiddleware(config.JWTSecret), createReverseProxy(config.ResponseServiceURL, "/api/v1/surveys"))
-
-		// Proxy survey analytics to response-service
-		surveyRoutes.GET("/:id/analytics", jwtAuthMiddleware(config.JWTSecret), createReverseProxy(config.ResponseServiceURL, "/api/v1/surveys"))
+		// Routes for survey responses and exports - service layer in response-service will handle owner/admin logic.
+		surveyResponseRoutes := surveyRoutes.Group("")
+		surveyResponseRoutes.Use(jwtAuthMiddleware(config.JWTSecret)) // Changed from roleAuthMiddleware("admin")
+		{
+			surveyResponseRoutes.GET("/:id/responses", createReverseProxy(config.ResponseServiceURL, "/api/v1/surveys"))
+			surveyResponseRoutes.GET("/:id/responses/export", createReverseProxy(config.ResponseServiceURL, "/api/v1/surveys"))
+		}
 	}
 
-	// Questions routes - these were proxied to survey-service, ensure they are still relevant or adjust
-	// If question management is now part of PUT /api/v1/surveys/:id, these might be redundant
-	// For now, keeping them but they might need review based on survey-service handlers
+	// Questions routes - proxied to survey-service. Service layer handles owner/admin logic for survey.
 	questionRoutes := r.Group("/api/v1/questions")
 	{
-		questionRoutes.Use(jwtAuthMiddleware(config.JWTSecret))
+		questionRoutes.Use(jwtAuthMiddleware(config.JWTSecret)) // Changed from roleAuthMiddleware("admin")
 		questionRoutes.Any("/*path", createReverseProxy(config.SurveyServiceURL, "/api/v1/questions"))
 	}
 
-	// Response routes (for submitting new responses)
+	// Response routes (for submitting new responses) - remains jwtAuthMiddleware
 	responseSubmissionRoutes := r.Group("/api/v1/responses")
 	{
-		// Public route for submitting responses
-		responseSubmissionRoutes.POST("", createReverseProxy(config.ResponseServiceURL, "/api/v1/responses"))
+		// Route for submitting responses - requires authentication
+		responseSubmissionRoutes.POST("", jwtAuthMiddleware(config.JWTSecret), createReverseProxy(config.ResponseServiceURL, "/api/v1/responses"))
 	}
 
 	return r
@@ -261,6 +266,56 @@ func jwtAuthMiddleware(jwtSecret string) gin.HandlerFunc {
 		// Forward the Authorization header to the underlying service
 		c.Request.Header.Set("X-User-ID", fmt.Sprintf("%v", claims["user_id"]))
 		c.Request.Header.Set("X-User-Roles", fmt.Sprintf("%v", claims["roles"]))
+
+		c.Next()
+	}
+}
+
+// roleAuthMiddleware checks if the user has one of the required roles
+func roleAuthMiddleware(requiredRoles ...string) gin.HandlerFunc {
+	return func(c *gin.Context) {
+		rawRoles, exists := c.Get("roles")
+		if !exists {
+			// This should not happen if jwtAuthMiddleware ran successfully
+			c.JSON(http.StatusForbidden, gin.H{"error": "roles not found in context"})
+			c.Abort()
+			return
+		}
+
+		userRoles, ok := rawRoles.([]interface{}) // Roles from JWT are often []interface{}
+		if !ok {
+			// Try asserting to []string if previous assert fails (flexible for different JWT libraries)
+			strRoles, okStr := rawRoles.([]string)
+			if !okStr {
+				c.JSON(http.StatusForbidden, gin.H{"error": "invalid roles format in token"})
+				c.Abort()
+				return
+			}
+			// Convert []string to []interface{} to unify logic below, or adapt logic
+			userRoles = make([]interface{}, len(strRoles))
+			for i, r := range strRoles {
+				userRoles[i] = r
+			}
+		}
+
+		hasRequiredRole := false
+		for _, reqRole := range requiredRoles {
+			for _, userRole := range userRoles {
+				if userRoleStr, ok := userRole.(string); ok && userRoleStr == reqRole {
+					hasRequiredRole = true
+					break
+				}
+			}
+			if hasRequiredRole {
+				break
+			}
+		}
+
+		if !hasRequiredRole {
+			c.JSON(http.StatusForbidden, gin.H{"error": "insufficient permissions"})
+			c.Abort()
+			return
+		}
 
 		c.Next()
 	}

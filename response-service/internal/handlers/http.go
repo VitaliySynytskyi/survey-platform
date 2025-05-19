@@ -1,12 +1,15 @@
 package handlers
 
 import (
+	"context"
 	"fmt"
+	"log"
 	"net/http"
 	"strconv"
 	"strings"
 
 	"github.com/gin-gonic/gin"
+	"github.com/survey-app/response-service/internal/contextkeys"
 	"github.com/survey-app/response-service/internal/models"
 	"github.com/survey-app/response-service/internal/service"
 )
@@ -25,11 +28,47 @@ func NewResponseHandler(rs service.ResponseServiceInterface) *ResponseHandler {
 func (h *ResponseHandler) SubmitResponse(c *gin.Context) {
 	var req models.CreateResponseRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
+		log.Printf("[HANDLER_ERROR] SubmitResponse: Failed to bind JSON: %v. Request Body: %s", err, c.Request.Body)
 		c.JSON(http.StatusBadRequest, gin.H{"error": fmt.Sprintf("Invalid request body: %s", err.Error())})
 		return
 	}
+	log.Printf("[HANDLER_INFO] SubmitResponse: Received request for SurveyID: %d, UserID from body: %v", req.SurveyID, req.UserID)
 
-	if err := h.responseService.SubmitResponse(c.Request.Context(), &req); err != nil {
+	ctx := c.Request.Context()
+
+	xUserIDStr := c.GetHeader("X-User-ID")
+	if xUserIDStr != "" {
+		uid, convErr := strconv.Atoi(xUserIDStr)
+		if convErr == nil {
+			log.Printf("[HANDLER_INFO] SubmitResponse: X-User-ID header found: '%s'. Adding to context.", xUserIDStr)
+			ctx = context.WithValue(ctx, contextkeys.UserIDKey, uid)
+			req.UserID = &uid
+		} else {
+			log.Printf("[HANDLER_WARN] SubmitResponse: X-User-ID header '%s' is not a valid integer: %v", xUserIDStr, convErr)
+		}
+	} else {
+		log.Printf("[HANDLER_INFO] SubmitResponse: No X-User-ID header found. UserID from request body (if any) will be used: %v", req.UserID)
+		if req.UserID != nil {
+			ctx = context.WithValue(ctx, contextkeys.UserIDKey, *req.UserID)
+		}
+	}
+
+	xUserRolesStr := c.GetHeader("X-User-Roles")
+	if xUserRolesStr != "" {
+		log.Printf("[HANDLER_INFO] SubmitResponse: X-User-Roles header found: '%s'. Parsing and adding to context.", xUserRolesStr)
+		roles := parseRolesHeader(xUserRolesStr)
+		if len(roles) > 0 {
+			ctx = context.WithValue(ctx, contextkeys.UserRolesKey, roles)
+			log.Printf("[HANDLER_INFO] SubmitResponse: Parsed roles: %v", roles)
+		} else {
+			log.Printf("[HANDLER_WARN] SubmitResponse: X-User-Roles header '%s' parsed to empty list.", xUserRolesStr)
+		}
+	} else {
+		log.Printf("[HANDLER_INFO] SubmitResponse: No X-User-Roles header found.")
+	}
+
+	if err := h.responseService.SubmitResponse(ctx, &req); err != nil {
+		log.Printf("[HANDLER_ERROR] SubmitResponse: Service call failed: %v", err)
 		if strings.Contains(err.Error(), "not active") || strings.Contains(err.Error(), "not found") {
 			c.JSON(http.StatusForbidden, gin.H{"error": err.Error()})
 		} else {
@@ -38,7 +77,23 @@ func (h *ResponseHandler) SubmitResponse(c *gin.Context) {
 		return
 	}
 
+	log.Printf("[HANDLER_INFO] SubmitResponse: Successfully submitted response for SurveyID: %d", req.SurveyID)
 	c.JSON(http.StatusCreated, gin.H{"message": "Response submitted successfully"})
+}
+
+// Helper function to parse roles from header like "[role1 role2]" or "role1,role2"
+func parseRolesHeader(headerValue string) []string {
+	cleaned := strings.Trim(headerValue, "[]")
+	if strings.Contains(cleaned, " ") { // Likely space-separated: "[role1 role2]"
+		return strings.Fields(cleaned)
+	}
+	if strings.Contains(cleaned, ",") { // Likely comma-separated: "role1,role2"
+		return strings.Split(cleaned, ",")
+	}
+	if cleaned != "" { // Single role
+		return []string{cleaned}
+	}
+	return []string{}
 }
 
 // GetSurveyResponsesHandler handles GET requests to /surveys/:surveyId/responses
@@ -50,7 +105,21 @@ func (h *ResponseHandler) GetSurveyResponsesHandler(c *gin.Context) {
 		return
 	}
 
-	responses, err := h.responseService.GetSurveyResponses(c.Request.Context(), surveyID)
+	ctx := c.Request.Context()
+	xUserIDStr := c.GetHeader("X-User-ID")
+	if xUserIDStr != "" {
+		if uid, convErr := strconv.Atoi(xUserIDStr); convErr == nil {
+			ctx = context.WithValue(ctx, contextkeys.UserIDKey, uid)
+		}
+	}
+	xUserRolesStr := c.GetHeader("X-User-Roles")
+	if xUserRolesStr != "" {
+		if roles := parseRolesHeader(xUserRolesStr); len(roles) > 0 {
+			ctx = context.WithValue(ctx, contextkeys.UserRolesKey, roles)
+		}
+	}
+
+	responses, err := h.responseService.GetSurveyResponses(ctx, surveyID)
 	if err != nil {
 		c.JSON(http.StatusInternalServerError, gin.H{"error": fmt.Sprintf("Failed to get survey responses: %s", err.Error())})
 		return
@@ -77,7 +146,21 @@ func (h *ResponseHandler) GetSurveyAnalytics(c *gin.Context) {
 		return
 	}
 
-	analytics, err := h.responseService.GetSurveyAnalytics(c.Request.Context(), surveyID)
+	ctx := c.Request.Context()
+	xUserIDStr := c.GetHeader("X-User-ID")
+	if xUserIDStr != "" {
+		if uid, convErr := strconv.Atoi(xUserIDStr); convErr == nil {
+			ctx = context.WithValue(ctx, contextkeys.UserIDKey, uid)
+		}
+	}
+	xUserRolesStr := c.GetHeader("X-User-Roles")
+	if xUserRolesStr != "" {
+		if roles := parseRolesHeader(xUserRolesStr); len(roles) > 0 {
+			ctx = context.WithValue(ctx, contextkeys.UserRolesKey, roles)
+		}
+	}
+
+	analytics, err := h.responseService.GetSurveyAnalytics(ctx, surveyID)
 	if err != nil {
 		if strings.Contains(err.Error(), "not found") {
 			c.JSON(http.StatusNotFound, gin.H{"error": fmt.Sprintf("Analytics not found or survey does not exist: %s", err.Error())})

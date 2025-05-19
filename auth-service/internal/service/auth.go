@@ -63,10 +63,10 @@ func (s *AuthService) Register(ctx context.Context, req *models.RegisterRequest)
 		return nil, fmt.Errorf("error creating user: %w", err)
 	}
 
-	// Get 'researcher' role and assign it to the user
-	role, err := s.repo.GetRoleByName(ctx, "researcher")
+	// Get 'user' role and assign it to the user
+	role, err := s.repo.GetRoleByName(ctx, "user")
 	if err != nil {
-		return nil, fmt.Errorf("error getting researcher role: %w", err)
+		return nil, fmt.Errorf("error getting user role: %w. Ensure 'user' role exists in the database.", err)
 	}
 
 	// Assign role to user

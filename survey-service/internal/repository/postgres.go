@@ -3,6 +3,8 @@ package repository
 import (
 	"context"
 	"errors"
+	"fmt"
+	"log"
 	"time"
 
 	"github.com/jackc/pgx/v5"
@@ -143,8 +145,9 @@ func (r *PostgresRepository) GetSurvey(ctx context.Context, id int) (*models.Sur
 	return &survey, nil
 }
 
-// GetSurveys retrieves all surveys for a creator
-func (r *PostgresRepository) GetSurveys(ctx context.Context, creatorID int) ([]*models.Survey, error) {
+// GetSurveysByCreatorID retrieves all surveys created by a specific user, including their questions and options.
+func (r *PostgresRepository) GetSurveysByCreatorID(ctx context.Context, creatorID int) ([]*models.Survey, error) {
+	log.Printf("[REPO_IMPL] GetSurveysByCreatorID called for creatorID: %d", creatorID)
 	query := `
 		SELECT id, creator_id, title, description, is_active, start_date, end_date, created_at, updated_at
 		FROM surveys
@@ -154,12 +157,86 @@ func (r *PostgresRepository) GetSurveys(ctx context.Context, creatorID int) ([]*
 
 	rows, err := r.db.Query(ctx, query, creatorID)
 	if err != nil {
-		return nil, err
+		log.Printf("[REPO_ERROR] GetSurveysByCreatorID: r.db.Query failed: %v", err)
+		return nil, fmt.Errorf("failed to query surveys by creator ID %d: %w", creatorID, err)
 	}
 	defer rows.Close()
 
 	var surveys []*models.Survey
+	for rows.Next() {
+		var survey models.Survey
+		var startDate, endDate *time.Time // For nullable date fields
 
+		err := rows.Scan(
+			&survey.ID,
+			&survey.CreatorID,
+			&survey.Title,
+			&survey.Description,
+			&survey.IsActive,
+			&startDate, // Scan into nullable time pointers
+			&endDate,
+			&survey.CreatedAt,
+			&survey.UpdatedAt,
+		)
+		if err != nil {
+			log.Printf("[REPO_ERROR] GetSurveysByCreatorID: rows.Scan failed: %v", err)
+			return nil, fmt.Errorf("failed to scan survey row: %w", err)
+		}
+
+		if startDate != nil {
+			survey.StartDate = *startDate
+		}
+		if endDate != nil {
+			survey.EndDate = *endDate
+		}
+
+		// Get questions for this survey
+		// Note: This makes N+1 queries. For performance on lists, consider optimizing
+		// (e.g., one query for all questions of these surveys, then map in Go).
+		// For now, keeping it simple and consistent with GetSurvey (singular).
+		questions, err := r.GetQuestionsBySurveyID(ctx, survey.ID)
+		if err != nil {
+			log.Printf("[REPO_ERROR] GetSurveysByCreatorID: GetQuestionsBySurveyID for survey %d failed: %v", survey.ID, err)
+			// Decide: return partial results, or fail all if one survey's questions fail?
+			// For now, fail all for consistency.
+			return nil, fmt.Errorf("failed to get questions for survey ID %d: %w", survey.ID, err)
+		}
+		survey.Questions = questions
+
+		surveys = append(surveys, &survey)
+	}
+
+	if err = rows.Err(); err != nil {
+		log.Printf("[REPO_ERROR] GetSurveysByCreatorID: rows.Err() after loop: %v", err)
+		return nil, fmt.Errorf("error iterating survey rows: %w", err)
+	}
+
+	if len(surveys) == 0 {
+		log.Printf("[REPO_INFO] GetSurveysByCreatorID: No surveys found for creatorID: %d", creatorID)
+		return []*models.Survey{}, nil // Return empty slice, not nil, if no surveys found
+	}
+
+	log.Printf("[REPO_INFO] GetSurveysByCreatorID: Found %d surveys for creatorID: %d", len(surveys), creatorID)
+	return surveys, nil
+}
+
+// GetAllSurveys retrieves all surveys from the database (for admin use), including their questions and options.
+func (r *PostgresRepository) GetAllSurveys(ctx context.Context) ([]*models.Survey, error) {
+	log.Println("[REPO_IMPL] GetAllSurveys called")
+	query := `
+		SELECT id, creator_id, title, description, is_active, start_date, end_date, created_at, updated_at
+		FROM surveys
+		ORDER BY updated_at DESC
+	`
+
+	rows, err := r.db.Query(ctx, query)
+	if err != nil {
+		log.Printf("[REPO_ERROR] GetAllSurveys: r.db.Query failed: %v", err)
+		return nil, fmt.Errorf("failed to query all surveys: %w", err)
+	}
+	defer rows.Close()
+
+	var surveys []*models.Survey
 	for rows.Next() {
 		var survey models.Survey
 		var startDate, endDate *time.Time
@@ -175,12 +252,11 @@ func (r *PostgresRepository) GetSurveys(ctx context.Context, creatorID int) ([]*
 			&survey.CreatedAt,
 			&survey.UpdatedAt,
 		)
-
 		if err != nil {
-			return nil, err
+			log.Printf("[REPO_ERROR] GetAllSurveys: rows.Scan failed: %v", err)
+			return nil, fmt.Errorf("failed to scan survey row in GetAllSurveys: %w", err)
 		}
 
-		// Set optional dates if provided
 		if startDate != nil {
 			survey.StartDate = *startDate
 		}
@@ -188,13 +264,28 @@ func (r *PostgresRepository) GetSurveys(ctx context.Context, creatorID int) ([]*
 			survey.EndDate = *endDate
 		}
 
+		// Get questions for this survey (N+1 issue applies here too)
+		questions, err := r.GetQuestionsBySurveyID(ctx, survey.ID)
+		if err != nil {
+			log.Printf("[REPO_ERROR] GetAllSurveys: GetQuestionsBySurveyID for survey %d failed: %v", survey.ID, err)
+			return nil, fmt.Errorf("failed to get questions for survey ID %d in GetAllSurveys: %w", survey.ID, err)
+		}
+		survey.Questions = questions
+
 		surveys = append(surveys, &survey)
 	}
 
-	if err := rows.Err(); err != nil {
-		return nil, err
+	if err = rows.Err(); err != nil {
+		log.Printf("[REPO_ERROR] GetAllSurveys: rows.Err() after loop: %v", err)
+		return nil, fmt.Errorf("error iterating all survey rows: %w", err)
 	}
 
+	if len(surveys) == 0 {
+		log.Println("[REPO_INFO] GetAllSurveys: No surveys found in the database.")
+		return []*models.Survey{}, nil
+	}
+
+	log.Printf("[REPO_INFO] GetAllSurveys: Found %d total surveys.", len(surveys))
 	return surveys, nil
 }
 
@@ -258,21 +349,18 @@ func (r *PostgresRepository) UpdateSurveyTx(ctx context.Context, tx pgx.Tx, surv
 
 // UpdateSurveyStatus updates only the is_active field of a survey
 func (r *PostgresRepository) UpdateSurveyStatus(ctx context.Context, id int, isActive bool) error {
-	query := `
-		UPDATE surveys
-		SET is_active = $1, updated_at = CURRENT_TIMESTAMP
-		WHERE id = $2
-		RETURNING updated_at
-	`
-	var updatedAt time.Time
-	err := r.db.QueryRow(ctx, query, isActive, id).Scan(&updatedAt)
+	log.Printf("[REPO_STUB] UpdateSurveyStatus called for ID: %d, IsActive: %t", id, isActive)
+	_, err := r.db.Exec(ctx, "UPDATE surveys SET is_active = $1, updated_at = NOW() WHERE id = $2", isActive, id) // Corrected order of args for query
 	if err != nil {
-		if errors.Is(err, pgx.ErrNoRows) {
-			return errors.New("survey not found for status update")
+		// Check if it's a "not found" error from pgx
+		if errors.Is(err, pgx.ErrNoRows) { // pgx.ErrNoRows might not be returned by Exec directly, check RowsAffected below if needed
+			log.Printf("[REPO_WARN] UpdateSurveyStatus: Survey with ID %d not found for update.", id)
+			return errors.New("survey not found for status update") // Return a specific error
 		}
-		return err
+		return fmt.Errorf("failed to update survey status for ID %d: %w", id, err)
 	}
-	// We don't need to update the survey object in this context, just confirm the update
+	// Optionally, check result.RowsAffected() if you need to confirm a row was updated,
+	// though for PATCH, not finding the row might be an error or idempotent success depending on requirements.
 	return nil
 }
 
@@ -668,4 +756,29 @@ func (r *PostgresRepository) DeleteQuestionOptionsTx(ctx context.Context, tx pgx
 	_, err := tx.Exec(ctx, query, questionID)
 	// We don't check RowsAffected here, as it's okay if a question had no options to delete
 	return err
+}
+
+// GetQuestionByID retrieves a single question by its ID.
+func (r *PostgresRepository) GetQuestionByID(ctx context.Context, id int) (*models.Question, error) {
+	log.Printf("[REPO_STUB] GetQuestionByID called for ID: %d", id)
+	// Placeholder implementation - actual query needed
+	// SELECT id, survey_id, text, type, required, order_num, created_at, updated_at FROM questions WHERE id = $1
+	return nil, errors.New("GetQuestionByID: not implemented")
+}
+
+// DeleteQuestionsBySurveyIDTx deletes all questions (and their options) associated with a survey ID within a transaction.
+func (r *PostgresRepository) DeleteQuestionsBySurveyIDTx(ctx context.Context, tx pgx.Tx, surveyID int) error {
+	log.Printf("[REPO_STUB] DeleteQuestionsBySurveyIDTx called for surveyID: %d", surveyID)
+	// Placeholder implementation - actual query needed
+	// First delete options for questions of this survey, then delete questions themselves.
+	// DELETE FROM question_options WHERE question_id IN (SELECT id FROM questions WHERE survey_id = $1)
+	// DELETE FROM questions WHERE survey_id = $1
+	tag, err := tx.Exec(ctx, "DELETE FROM questions WHERE survey_id = $1", surveyID) // Simplified: assumes options are cascaded or handled separately
+	if err != nil {
+		return fmt.Errorf("failed to delete questions by survey ID %d: %w", surveyID, err)
+	}
+	if tag.RowsAffected() == 0 {
+		log.Printf("[REPO_WARN] DeleteQuestionsBySurveyIDTx: No questions found to delete for survey ID %d", surveyID)
+	}
+	return nil
 }

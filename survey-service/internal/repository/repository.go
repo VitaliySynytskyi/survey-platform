@@ -17,13 +17,15 @@ type SurveyRepositoryInterface interface {
 	// Survey operations (non-transactional)
 	CreateSurvey(ctx context.Context, survey *models.Survey) (int, error)
 	GetSurvey(ctx context.Context, id int) (*models.Survey, error)
-	GetSurveys(ctx context.Context, creatorID int) ([]*models.Survey, error)
+	GetSurveysByCreatorID(ctx context.Context, creatorID int) ([]*models.Survey, error)
+	GetAllSurveys(ctx context.Context) ([]*models.Survey, error)
 	UpdateSurvey(ctx context.Context, survey *models.Survey) error
 	DeleteSurvey(ctx context.Context, id int) error
 	UpdateSurveyStatus(ctx context.Context, id int, isActive bool) error
 
 	// Question operations (non-transactional)
 	CreateQuestion(ctx context.Context, question *models.Question) (int, error)
+	GetQuestionByID(ctx context.Context, id int) (*models.Question, error)
 	GetQuestionsBySurveyID(ctx context.Context, surveyID int) ([]*models.Question, error)
 	UpdateQuestion(ctx context.Context, question *models.Question) error
 	DeleteQuestion(ctx context.Context, id int) error
@@ -47,4 +49,5 @@ type SurveyRepositoryInterface interface {
 	CreateQuestionOptionTx(ctx context.Context, tx pgx.Tx, option *models.QuestionOption) (int, error)
 	// GetQuestionOptionsByQuestionIDTx is not strictly needed if GetQuestionsBySurveyIDTx handles it, but can be added for consistency
 	DeleteQuestionOptionsTx(ctx context.Context, tx pgx.Tx, questionID int) error
+	DeleteQuestionsBySurveyIDTx(ctx context.Context, tx pgx.Tx, surveyID int) error
 }

@@ -15,7 +15,7 @@ RUN rm -f go.mod go.sum && \
     echo 'module github.com/survey-app/api-gateway' > go.mod && \
     echo '' >> go.mod && \
     echo 'go 1.20' >> go.mod && \
-    go get github.com/gin-gonic/gin@v1.9.0 && \
+    go get github.com/gin-gonic/gin@v1.9.1 && \
     go get github.com/golang-jwt/jwt/v5@v5.0.0 && \
     go get github.com/joho/godotenv@v1.5.1 && \
     go mod tidy
