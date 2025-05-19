@@ -12,6 +12,8 @@ const SurveyResponses = () => import('../views/SurveyResponses.vue')
 const TakeSurvey = () => import('../views/TakeSurvey.vue')
 const NotFound = () => import('../views/NotFound.vue')
 const SurveySuccess = () => import('../views/SurveySuccess.vue')
+const SurveyAnalytics = () => import('../views/SurveyAnalytics.vue')
+const ErrorPage = () => import('../views/ErrorPage.vue')
 
 const routes = [
   {
@@ -73,15 +75,55 @@ const routes = [
   {
     path: '/surveys/:id/analytics',
     name: 'SurveyAnalytics',
-    component: () => import('../views/SurveyAnalytics.vue'),
+    component: SurveyAnalytics,
+    props: true,
     meta: { requiresAuth: true }
   },
-  // {
-  //   path: '/profile',
-  //   name: 'Profile',
-  //   component: () => import('../views/Profile.vue'),
-  //   meta: { requiresAuth: true }
-  // },
+  {
+    path: '/unauthorized',
+    name: 'Unauthorized',
+    component: ErrorPage,
+    props: {
+      code: '401',
+      title: 'Unauthorized',
+      message: 'You do not have permission to access this page. Please log in with appropriate credentials.',
+      imageUrl: 'https://placehold.co/600x400/ef476f/ffffff?text=Unauthorized',
+      actionPath: '/login',
+      actionText: 'Log In',
+      actionIcon: 'mdi-login',
+      actionColor: 'primary'
+    }
+  },
+  {
+    path: '/forbidden',
+    name: 'Forbidden',
+    component: ErrorPage,
+    props: {
+      code: '403',
+      title: 'Access Forbidden',
+      message: 'You do not have permission to access this resource.',
+      imageUrl: 'https://placehold.co/600x400/ffd166/333333?text=Forbidden',
+      actionPath: '/dashboard',
+      actionText: 'Go to Dashboard',
+      actionIcon: 'mdi-view-dashboard',
+      actionColor: 'primary'
+    }
+  },
+  {
+    path: '/server-error',
+    name: 'ServerError',
+    component: ErrorPage,
+    props: {
+      code: '500',
+      title: 'Server Error',
+      message: 'Something went wrong on our servers. Please try again later or contact support if the problem persists.',
+      imageUrl: 'https://placehold.co/600x400/ef476f/ffffff?text=Server+Error',
+      actionText: 'Refresh',
+      actionIcon: 'mdi-refresh',
+      actionColor: 'primary',
+      actionPath: ''
+    }
+  },
   {
     path: '/:pathMatch(.*)*',
     name: 'NotFound',
@@ -91,7 +133,14 @@ const routes = [
 
 const router = createRouter({
   history: createWebHistory(),
-  routes
+  routes,
+  scrollBehavior(to, from, savedPosition) {
+    if (savedPosition) {
+      return savedPosition
+    } else {
+      return { top: 0 }
+    }
+  }
 })
 
 // Navigation guards
