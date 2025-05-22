@@ -27,7 +27,7 @@ This platform enables organizations to create, distribute, and analyze surveys t
 The application follows a microservices architecture pattern with the following components:
 
 <div align="center">
-  <img src="docs/architecture.svg" alt="Survey Platform Architecture" width="800"/>
+  <img src="docs/Diagram.png" alt="Survey Platform Architecture" width="800"/>
 </div>
 
 <details>
@@ -51,11 +51,7 @@ graph TD
 
 ### Frontend Structure
 
-The frontend is built with Vue.js and follows the component-based architecture:
-
-<div align="center">
-  <img src="docs/frontend-structure.svg" alt="Frontend Structure" width="800"/>
-</div>
+The frontend is built with Vue.js and follows the component-based architecture
 
 ### 🧩 Microservices
 
