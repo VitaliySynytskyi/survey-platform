@@ -9,9 +9,9 @@ import (
 	"strings"
 
 	"github.com/gin-gonic/gin"
-	"github.com/survey-app/response-service/internal/contextkeys"
-	"github.com/survey-app/response-service/internal/models"
-	"github.com/survey-app/response-service/internal/service"
+	"github.com/VitaliySynytskyi/survey-platform/response-service/internal/contextkeys"
+	"github.com/VitaliySynytskyi/survey-platform/response-service/internal/models"
+	"github.com/VitaliySynytskyi/survey-platform/response-service/internal/service"
 )
 
 // ResponseHandler struct holds the service interface

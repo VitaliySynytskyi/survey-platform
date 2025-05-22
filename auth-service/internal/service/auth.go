@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/golang-jwt/jwt/v5"
-	"github.com/survey-app/auth-service/internal/models"
-	"github.com/survey-app/auth-service/internal/repository"
+	"github.com/VitaliySynytskyi/survey-platform/auth-service/internal/models"
+	"github.com/VitaliySynytskyi/survey-platform/auth-service/internal/repository"
 )
 
 // AuthService handles authentication operations

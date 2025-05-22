@@ -8,7 +8,7 @@ import (
 
 	"github.com/DATA-DOG/go-sqlmock"
 	"github.com/stretchr/testify/assert"
-	"github.com/survey-app/auth-service/internal/models"
+	"github.com/VitaliySynytskyi/survey-platform/auth-service/internal/models"
 )
 
 func TestGetUserByUsername(t *testing.T) {

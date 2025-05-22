@@ -3,7 +3,7 @@ package repository
 import (
 	"context"
 
-	"github.com/survey-app/auth-service/internal/models"
+	"github.com/VitaliySynytskyi/survey-platform/auth-service/internal/models"
 )
 
 // Repository defines the interface for database operations

@@ -11,10 +11,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
-	"github.com/survey-app/auth-service/internal/config"
-	"github.com/survey-app/auth-service/internal/handlers"
-	"github.com/survey-app/auth-service/internal/repository"
-	"github.com/survey-app/auth-service/internal/service"
+	"github.com/VitaliySynytskyi/survey-platform/auth-service/internal/config"
+	"github.com/VitaliySynytskyi/survey-platform/auth-service/internal/handlers"
+	"github.com/VitaliySynytskyi/survey-platform/auth-service/internal/repository"
+	"github.com/VitaliySynytskyi/survey-platform/auth-service/internal/service"
 )
 
 func main() {

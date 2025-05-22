@@ -11,8 +11,8 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/survey-app/response-service/internal/models"
-	"github.com/survey-app/response-service/internal/service"
+	"github.com/VitaliySynytskyi/survey-platform/response-service/internal/models"
+	"github.com/VitaliySynytskyi/survey-platform/response-service/internal/service"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
 

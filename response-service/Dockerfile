@@ -21,7 +21,7 @@ COPY . .
 
 # Generate go.mod and go.sum on the fly and then run go mod tidy
 RUN rm -f go.mod go.sum && \
-    echo 'module github.com/survey-app/response-service' > go.mod && \
+    echo 'module github.com/VitaliySynytskyi/survey-platform/response-service' > go.mod && \
     echo '' >> go.mod && \
     echo 'go 1.20' >> go.mod && \
     go get github.com/gin-gonic/gin@v1.9.0 && \

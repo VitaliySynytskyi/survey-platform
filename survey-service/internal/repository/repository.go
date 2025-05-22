@@ -4,7 +4,7 @@ import (
 	"context"
 
 	"github.com/jackc/pgx/v5"
-	"github.com/survey-app/survey-service/internal/models"
+	"github.com/VitaliySynytskyi/survey-platform/survey-service/internal/models"
 )
 
 // SurveyRepositoryInterface defines the interface for survey and question database operations

@@ -3,7 +3,7 @@ package repository
 import (
 	"context"
 
-	"github.com/survey-app/response-service/internal/models"
+	"github.com/VitaliySynytskyi/survey-platform/response-service/internal/models"
 )
 
 // ResponseRepositoryInterface defines methods for interacting with response data

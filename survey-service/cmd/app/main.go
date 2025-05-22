@@ -8,13 +8,13 @@ import (
 	"os"
 	"time"
 
+	"github.com/VitaliySynytskyi/survey-platform/survey-service/internal/config"
+	"github.com/VitaliySynytskyi/survey-platform/survey-service/internal/handlers"
+	"github.com/VitaliySynytskyi/survey-platform/survey-service/internal/repository"
+	"github.com/VitaliySynytskyi/survey-platform/survey-service/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/jackc/pgx/v5/pgxpool"
 	"github.com/joho/godotenv"
-	"github.com/survey-app/survey-service/internal/config"
-	"github.com/survey-app/survey-service/internal/handlers"
-	"github.com/survey-app/survey-service/internal/repository"
-	"github.com/survey-app/survey-service/internal/service"
 )
 
 func main() {

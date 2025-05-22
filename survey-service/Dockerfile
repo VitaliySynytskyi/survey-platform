@@ -3,7 +3,7 @@ FROM golang:1.20-alpine AS builder
 WORKDIR /app
 
 # Create minimal go.mod file
-RUN echo 'module github.com/survey-app/survey-service' > go.mod && \
+RUN echo 'module github.com/VitaliySynytskyi/survey-platform/survey-service' > go.mod && \
     echo '' >> go.mod && \
     echo 'go 1.20' >> go.mod
 
@@ -12,7 +12,7 @@ COPY . .
 
 # Reset go.mod and install specific compatible versions
 RUN rm -f go.mod go.sum && \
-    echo 'module github.com/survey-app/survey-service' > go.mod && \
+    echo 'module github.com/VitaliySynytskyi/survey-platform/survey-service' > go.mod && \
     echo '' >> go.mod && \
     echo 'go 1.20' >> go.mod && \
     go get github.com/gin-gonic/gin@v1.9.0 && \

@@ -6,8 +6,8 @@ import (
 	"log"
 	"time"
 
-	"github.com/survey-app/response-service/internal/config" // Assuming config path
-	"github.com/survey-app/response-service/internal/models"
+	"github.com/VitaliySynytskyi/survey-platform/response-service/internal/config" // Assuming config path
+	"github.com/VitaliySynytskyi/survey-platform/response-service/internal/models"
 
 	"go.mongodb.org/mongo-driver/bson"
 	"go.mongodb.org/mongo-driver/mongo"

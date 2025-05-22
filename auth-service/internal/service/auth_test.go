@@ -6,10 +6,10 @@ import (
 	"testing"
 	"time"
 
+	"github.com/VitaliySynytskyi/survey-platform/auth-service/internal/models"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/stretchr/testify/assert"
 	"github.com/stretchr/testify/mock"
-	"github.com/survey-app/auth-service/internal/models"
 )
 
 // MockRepository is a mock of Repository interface
@@ -301,7 +301,13 @@ func TestValidateToken(t *testing.T) {
 	authService := NewAuthService(mockRepo, jwtSecret, 24)
 
 	t.Run("Valid token", func(t *testing.T) {
-		// Create a sample token		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{			"user_id":  1,			"username": "testuser",			"type":     "access",			"exp":      time.Now().Add(24 * time.Hour).Unix(),		})
+		// Create a sample token
+		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
+			"user_id":  1,
+			"username": "testuser",
+			"type":     "access",
+			"exp":      time.Now().Add(24 * time.Hour).Unix(),
+		})
 
 		tokenString, _ := token.SignedString([]byte(jwtSecret))
 
@@ -336,7 +342,7 @@ func TestValidateToken(t *testing.T) {
 		token := jwt.NewWithClaims(jwt.SigningMethodHS256, jwt.MapClaims{
 			"user_id": 1,
 			"type":    "refresh", // Should be "access"
-			"exp":     jwt.NewNumericDate(jwt.NewNumericDate(jwt.Now).Add(24 * time.Hour)).Unix(),
+			"exp":     time.Now().Add(24 * time.Hour).Unix(),
 		})
 
 		tokenString, _ := token.SignedString([]byte(jwtSecret))

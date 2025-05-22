@@ -10,7 +10,7 @@ import (
 
 	"github.com/jackc/pgx/v5"
 	"github.com/jackc/pgx/v5/pgxpool"
-	"github.com/survey-app/survey-service/internal/models"
+	"github.com/VitaliySynytskyi/survey-platform/survey-service/internal/models"
 )
 
 // PostgresRepository implements the Repository interface

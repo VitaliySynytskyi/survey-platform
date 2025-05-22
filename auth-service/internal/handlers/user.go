@@ -4,7 +4,7 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/survey-app/auth-service/internal/service"
+	"github.com/VitaliySynytskyi/survey-platform/auth-service/internal/service"
 )
 
 // UserHandler handles user-related endpoints

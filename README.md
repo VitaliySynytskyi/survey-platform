@@ -213,4 +213,53 @@ This project is licensed under the MIT License - see the LICENSE file for detail
 
 ## 👥 Contributors
 
-- [Vitalii Synytskyi](https://github.com/vitaliisynytskyi) 
+- [Vitalii Synytskyi](https://github.com/vitaliisynytskyi)
+
+## Test Coverage
+
+The survey platform includes comprehensive test coverage for various components:
+
+### API Gateway
+- Tests for health endpoints
+- Tests for CORS middleware
+- Tests for JWT authentication middleware
+- Tests for reverse proxy routes
+
+### Response Service
+- Tests for survey response submission
+- Tests for survey response retrieval
+- Tests for survey analytics
+- Tests for CSV export functionality
+
+### Auth Service
+- Tests for user authentication
+- Tests for user registration
+- Tests for user profile management
+- Tests for password management
+
+### Survey Service
+- Tests for survey creation
+- Tests for survey updates
+- Tests for question management
+
+## Running Tests
+
+To run tests for a specific service, use the following commands:
+
+```bash
+# API Gateway tests
+cd api-gateway
+go test ./cmd/app -v
+
+# Response Service tests
+cd response-service
+go test ./internal/service -v
+
+# Auth Service tests
+cd auth-service
+go test ./internal/service -v
+
+# Survey Service tests
+cd survey-service
+go test ./internal/service -v
+``` 

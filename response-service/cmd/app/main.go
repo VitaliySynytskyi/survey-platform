@@ -8,10 +8,10 @@ import (
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
 
-	"github.com/survey-app/response-service/internal/config"
-	"github.com/survey-app/response-service/internal/handlers"
-	"github.com/survey-app/response-service/internal/repository"
-	"github.com/survey-app/response-service/internal/service"
+	"github.com/VitaliySynytskyi/survey-platform/response-service/internal/config"
+	"github.com/VitaliySynytskyi/survey-platform/response-service/internal/handlers"
+	"github.com/VitaliySynytskyi/survey-platform/response-service/internal/repository"
+	"github.com/VitaliySynytskyi/survey-platform/response-service/internal/service"
 )
 
 func main() {

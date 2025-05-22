@@ -12,11 +12,26 @@ import (
 	"strings"
 	"time"
 
-	"github.com/survey-app/response-service/internal/contextkeys"
-	"github.com/survey-app/response-service/internal/models"
-	"github.com/survey-app/response-service/internal/repository"
+	"github.com/VitaliySynytskyi/survey-platform/response-service/internal/contextkeys"
+	"github.com/VitaliySynytskyi/survey-platform/response-service/internal/models"
+	"github.com/VitaliySynytskyi/survey-platform/response-service/internal/repository"
 	"go.mongodb.org/mongo-driver/bson/primitive"
 )
+
+// Set this to true to disable logging in tests
+var isTestEnvironment = false
+
+// Enable/disable logging for tests
+func SetTestEnvironment(isTest bool) {
+	isTestEnvironment = isTest
+}
+
+// logf logs a message if not in test environment
+func logf(format string, v ...interface{}) {
+	if !isTestEnvironment {
+		log.Printf(format, v...)
+	}
+}
 
 // ResponseServiceInterface defines methods for response-related business logic
 type ResponseServiceInterface interface {
@@ -47,11 +62,11 @@ func NewResponseService(repo repository.ResponseRepositoryInterface, surveyServi
 // getSurveyDetails fetches full survey details from the survey-service
 func (s *ResponseService) getSurveyDetails(ctx context.Context, surveyID int) (*models.SurveyDetailsFromService, error) {
 	surveyURL := fmt.Sprintf("%s/api/v1/surveys/%d", s.surveyServiceURL, surveyID)
-	log.Printf("[SERVICE_INFO] getSurveyDetails: Calling Survey Service at URL: %s", surveyURL)
+	logf("[SERVICE_INFO] getSurveyDetails: Calling Survey Service at URL: %s", surveyURL)
 
 	httpReq, err := http.NewRequestWithContext(ctx, "GET", surveyURL, nil)
 	if err != nil {
-		log.Printf("[SERVICE_ERROR] getSurveyDetails: Failed to create request to survey-service for SurveyID %d: %v", surveyID, err)
+		logf("[SERVICE_ERROR] getSurveyDetails: Failed to create request to survey-service for SurveyID %d: %v", surveyID, err)
 		return nil, fmt.Errorf("failed to create request to survey-service: %w", err)
 	}
 
@@ -59,7 +74,7 @@ func (s *ResponseService) getSurveyDetails(ctx context.Context, surveyID int) (*
 	if authHeaderVal := ctx.Value(contextkeys.AuthorizationHeaderKey); authHeaderVal != nil {
 		if authHeader, ok := authHeaderVal.(string); ok && authHeader != "" {
 			httpReq.Header.Set("Authorization", authHeader)
-			log.Printf("[SERVICE_INFO] getSurveyDetails: Forwarding Authorization header to survey-service.")
+			logf("[SERVICE_INFO] getSurveyDetails: Forwarding Authorization header to survey-service.")
 		}
 	}
 
@@ -67,25 +82,25 @@ func (s *ResponseService) getSurveyDetails(ctx context.Context, surveyID int) (*
 	if userIDVal := ctx.Value(contextkeys.UserIDKey); userIDVal != nil {
 		if userID, ok := userIDVal.(int); ok {
 			httpReq.Header.Set("X-User-ID", strconv.Itoa(userID))
-			log.Printf("[SERVICE_INFO] getSurveyDetails: Forwarding X-User-ID: %d to survey-service", userID)
+			logf("[SERVICE_INFO] getSurveyDetails: Forwarding X-User-ID: %d to survey-service", userID)
 		}
 	}
 	if userRolesVal := ctx.Value(contextkeys.UserRolesKey); userRolesVal != nil {
 		if roles, ok := userRolesVal.([]string); ok {
 			rolesStr := fmt.Sprintf("%v", roles) // Produces "[role1 role2 ...]"
 			httpReq.Header.Set("X-User-Roles", rolesStr)
-			log.Printf("[SERVICE_INFO] getSurveyDetails: Forwarding X-User-Roles: %s to survey-service", rolesStr)
+			logf("[SERVICE_INFO] getSurveyDetails: Forwarding X-User-Roles: %s to survey-service", rolesStr)
 		}
 	}
 
 	httpResp, err := s.httpClient.Do(httpReq)
 	if err != nil {
-		log.Printf("[SERVICE_ERROR] getSurveyDetails: Failed to call survey-service for SurveyID %d: %v", surveyID, err)
+		logf("[SERVICE_ERROR] getSurveyDetails: Failed to call survey-service for SurveyID %d: %v", surveyID, err)
 		return nil, fmt.Errorf("failed to call survey-service: %w", err)
 	}
 	defer httpResp.Body.Close()
 
-	log.Printf("[SERVICE_INFO] getSurveyDetails: Response status from survey-service for SurveyID %d: %d", surveyID, httpResp.StatusCode)
+	logf("[SERVICE_INFO] getSurveyDetails: Response status from survey-service for SurveyID %d: %d", surveyID, httpResp.StatusCode)
 	if httpResp.StatusCode == http.StatusNotFound {
 		return nil, errors.New("survey not found in survey-service")
 	}
@@ -96,7 +111,7 @@ func (s *ResponseService) getSurveyDetails(ctx context.Context, surveyID int) (*
 
 	var surveyDetails models.SurveyDetailsFromService
 	if err := json.NewDecoder(httpResp.Body).Decode(&surveyDetails); err != nil {
-		log.Printf("[SERVICE_ERROR] getSurveyDetails: Failed to decode response from survey-service for SurveyID %d: %v", surveyID, err)
+		logf("[SERVICE_ERROR] getSurveyDetails: Failed to decode response from survey-service for SurveyID %d: %v", surveyID, err)
 		return nil, fmt.Errorf("failed to decode response from survey-service: %w", err)
 	}
 	return &surveyDetails, nil
@@ -104,25 +119,25 @@ func (s *ResponseService) getSurveyDetails(ctx context.Context, surveyID int) (*
 
 // SubmitResponse handles the business logic for submitting a new survey response
 func (s *ResponseService) SubmitResponse(ctx context.Context, req *models.CreateResponseRequest) error {
-	log.Printf("[SERVICE_INFO] SubmitResponse: Attempting to submit response for SurveyID: %d, UserID: %v", req.SurveyID, req.UserID)
-	log.Printf("[SERVICE_INFO] SubmitResponse: Request Answers: %+v", req.Answers)
+	logf("[SERVICE_INFO] SubmitResponse: Attempting to submit response for SurveyID: %d, UserID: %v", req.SurveyID, req.UserID)
+	logf("[SERVICE_INFO] SubmitResponse: Request Answers: %+v", req.Answers)
 
 	surveyDetails, err := s.getSurveyDetails(ctx, req.SurveyID)
 	if err != nil {
-		log.Printf("[SERVICE_ERROR] SubmitResponse: Failed to get survey details for SurveyID %d: %v", req.SurveyID, err)
+		logf("[SERVICE_ERROR] SubmitResponse: Failed to get survey details for SurveyID %d: %v", req.SurveyID, err)
 		return fmt.Errorf("failed to retrieve survey details (ID: %d): %w", req.SurveyID, err)
 	}
-	log.Printf("[SERVICE_INFO] SubmitResponse: Successfully fetched survey details for SurveyID %d: %+v", req.SurveyID, surveyDetails)
+	logf("[SERVICE_INFO] SubmitResponse: Successfully fetched survey details for SurveyID %d: %+v", req.SurveyID, surveyDetails)
 
 	if !surveyDetails.IsActive {
-		log.Printf("[SERVICE_WARN] SubmitResponse: SurveyID %d is not active. Aborting submission.", req.SurveyID)
+		logf("[SERVICE_WARN] SubmitResponse: SurveyID %d is not active. Aborting submission.", req.SurveyID)
 		return errors.New("survey is not active and cannot accept new responses")
 	}
 
 	// TODO: Validate req.Answers against surveyDetails.Questions
 	// - Check if question IDs in answers are valid for the survey.
 	// - Check if answer values are consistent with question types (e.g., selected option ID is valid for single_choice).
-	log.Printf("[SERVICE_INFO] SubmitResponse: SurveyID %d is active. Proceeding with response creation.", req.SurveyID)
+	logf("[SERVICE_INFO] SubmitResponse: SurveyID %d is active. Proceeding with response creation.", req.SurveyID)
 
 	response := &models.Response{
 		SurveyID: req.SurveyID,
@@ -131,14 +146,14 @@ func (s *ResponseService) SubmitResponse(ctx context.Context, req *models.Create
 		// SubmittedAt will be set by the repository
 	}
 
-	log.Printf("[SERVICE_INFO] SubmitResponse: Attempting to create response in repository for SurveyID: %d", req.SurveyID)
+	logf("[SERVICE_INFO] SubmitResponse: Attempting to create response in repository for SurveyID: %d", req.SurveyID)
 	err = s.repo.CreateResponse(ctx, response)
 	if err != nil {
-		log.Printf("[SERVICE_ERROR] SubmitResponse: Failed to create response in repository for SurveyID %d: %v", req.SurveyID, err)
+		logf("[SERVICE_ERROR] SubmitResponse: Failed to create response in repository for SurveyID %d: %v", req.SurveyID, err)
 		return fmt.Errorf("failed to save response to database (SurveyID: %d): %w", req.SurveyID, err)
 	}
 
-	log.Printf("[SERVICE_INFO] SubmitResponse: Successfully created response for SurveyID: %d", req.SurveyID)
+	logf("[SERVICE_INFO] SubmitResponse: Successfully created response for SurveyID: %d", req.SurveyID)
 	return nil
 }
 
@@ -153,14 +168,14 @@ func (s *ResponseService) GetSurveyAnalytics(ctx context.Context, surveyID int) 
 	// 1. Fetch survey details
 	surveyDetails, err := s.getSurveyDetails(ctx, surveyID)
 	if err != nil {
-		log.Printf("Error fetching survey details for analytics (surveyID: %d): %v", surveyID, err) // Keep error log
+		logf("Error fetching survey details for analytics (surveyID: %d): %v", surveyID, err) // Keep error log
 		return nil, fmt.Errorf("failed to get survey details for analytics: %w", err)
 	}
 
 	// 2. Fetch all responses
 	responses, err := s.repo.GetResponsesBySurveyID(ctx, surveyID)
 	if err != nil {
-		log.Printf("Error fetching responses for analytics (surveyID: %d): %v", surveyID, err) // Keep error log
+		logf("Error fetching responses for analytics (surveyID: %d): %v", surveyID, err) // Keep error log
 		return nil, fmt.Errorf("failed to get survey responses for analytics: %w", err)
 	}
 
@@ -349,24 +364,24 @@ func (s *ResponseService) GetSurveyAnalytics(ctx context.Context, surveyID int) 
 
 // ExportSurveyResponsesCSV generates a CSV string of all responses for a given survey.
 // It fetches survey details for question text (headers) and all responses.
-func (s *ResponseService) ExportSurveyResponsesCSV(ctx context.Context, surveyID int) (csvDataStr string, filename string, err error) {
-	log.Printf("[SERVICE_INFO] ExportSurveyResponsesCSV: Starting export for SurveyID %d", surveyID)
+func (s *ResponseService) ExportSurveyResponsesCSV(ctx context.Context, surveyID int) (csvData string, filename string, err error) {
+	logf("[SERVICE_INFO] ExportSurveyResponsesCSV: Starting export for SurveyID %d", surveyID)
 
 	// 1. Fetch Survey Details (for question texts as headers)
 	surveyDetails, err := s.getSurveyDetails(ctx, surveyID)
 	if err != nil {
-		log.Printf("[SERVICE_ERROR] ExportSurveyResponsesCSV: Failed to get survey details for SurveyID %d: %v", surveyID, err)
+		logf("[SERVICE_ERROR] ExportSurveyResponsesCSV: Failed to get survey details for SurveyID %d: %v", surveyID, err)
 		return "", "", fmt.Errorf("failed to retrieve survey details (ID: %d): %w", surveyID, err)
 	}
-	log.Printf("[SERVICE_INFO] ExportSurveyResponsesCSV: Successfully fetched survey details for SurveyID %d. Number of questions: %d", surveyID, len(surveyDetails.Questions))
+	logf("[SERVICE_INFO] ExportSurveyResponsesCSV: Successfully fetched survey details for SurveyID %d. Number of questions: %d", surveyID, len(surveyDetails.Questions))
 
 	// 2. Fetch All Responses for this Survey
 	responses, err := s.GetSurveyResponses(ctx, surveyID) // This already calls s.repo.GetResponsesBySurveyID
 	if err != nil {
-		log.Printf("[SERVICE_ERROR] ExportSurveyResponsesCSV: Failed to get responses for SurveyID %d: %v", surveyID, err)
+		logf("[SERVICE_ERROR] ExportSurveyResponsesCSV: Failed to get responses for SurveyID %d: %v", surveyID, err)
 		return "", "", fmt.Errorf("failed to retrieve responses (ID: %d): %w", surveyID, err)
 	}
-	log.Printf("[SERVICE_INFO] ExportSurveyResponsesCSV: Successfully fetched %d responses for SurveyID %d", len(responses), surveyID)
+	logf("[SERVICE_INFO] ExportSurveyResponsesCSV: Successfully fetched %d responses for SurveyID %d", len(responses), surveyID)
 
 	// 3. Prepare CSV Data
 	var csvBuffer strings.Builder
@@ -384,7 +399,7 @@ func (s *ResponseService) ExportSurveyResponsesCSV(ctx context.Context, surveyID
 	}
 
 	if err := csvWriter.Write(headers); err != nil {
-		log.Printf("[SERVICE_ERROR] ExportSurveyResponsesCSV: Failed to write CSV headers for SurveyID %d: %v", surveyID, err)
+		logf("[SERVICE_ERROR] ExportSurveyResponsesCSV: Failed to write CSV headers for SurveyID %d: %v", surveyID, err)
 		return "", "", fmt.Errorf("failed to write CSV headers: %w", err)
 	}
 
@@ -429,23 +444,23 @@ func (s *ResponseService) ExportSurveyResponsesCSV(ctx context.Context, surveyID
 				}
 				row[headerIndex] = formattedValue
 			} else {
-				log.Printf("[SERVICE_WARN] ExportSurveyResponsesCSV: Answer for QuestionID %d found in response %s, but this QuestionID is not in the survey's question list.", ans.QuestionID, resp.ID.Hex())
+				logf("[SERVICE_WARN] ExportSurveyResponsesCSV: Answer for QuestionID %d found in response %s, but this QuestionID is not in the survey's question list.", ans.QuestionID, resp.ID.Hex())
 			}
 		}
 		if err := csvWriter.Write(row); err != nil {
-			log.Printf("[SERVICE_ERROR] ExportSurveyResponsesCSV: Error writing CSV row for response %s, SurveyID %d: %v", resp.ID.Hex(), surveyID, err)
+			logf("[SERVICE_ERROR] ExportSurveyResponsesCSV: Error writing CSV row for response %s, SurveyID %d: %v", resp.ID.Hex(), surveyID, err)
 			// Potentially continue and try other rows, or return an error
 		}
 	}
 	csvWriter.Flush()
 
 	if err := csvWriter.Error(); err != nil {
-		log.Printf("[SERVICE_ERROR] ExportSurveyResponsesCSV: CSV writer error for SurveyID %d: %v", surveyID, err)
+		logf("[SERVICE_ERROR] ExportSurveyResponsesCSV: CSV writer error for SurveyID %d: %v", surveyID, err)
 		return "", "", fmt.Errorf("error during CSV generation: %w", err)
 	}
 
 	generatedFilename := fmt.Sprintf("survey_%d_responses_%s.csv", surveyID, time.Now().Format("20060102_150405"))
-	log.Printf("[SERVICE_INFO] ExportSurveyResponsesCSV: Successfully generated CSV data for SurveyID %d. Filename: %s", surveyID, generatedFilename)
+	logf("[SERVICE_INFO] ExportSurveyResponsesCSV: Successfully generated CSV data for SurveyID %d. Filename: %s", surveyID, generatedFilename)
 
 	return csvBuffer.String(), generatedFilename, nil
 }

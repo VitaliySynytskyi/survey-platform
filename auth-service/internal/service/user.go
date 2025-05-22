@@ -5,8 +5,8 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/survey-app/auth-service/internal/models"
-	"github.com/survey-app/auth-service/internal/repository"
+	"github.com/VitaliySynytskyi/survey-platform/auth-service/internal/models"
+	"github.com/VitaliySynytskyi/survey-platform/auth-service/internal/repository"
 )
 
 // UserService handles user operations

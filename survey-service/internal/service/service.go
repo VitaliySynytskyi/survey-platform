@@ -4,10 +4,9 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"log"
 
-	"github.com/survey-app/survey-service/internal/models"
-	"github.com/survey-app/survey-service/internal/repository"
+	"github.com/VitaliySynytskyi/survey-platform/survey-service/internal/models"
+	"github.com/VitaliySynytskyi/survey-platform/survey-service/internal/repository"
 )
 
 // ContextKey is the type for context keys to avoid collisions.
@@ -109,36 +108,27 @@ func containsString(slice []string, str string) bool {
 func (s *SurveyService) authorizeSurveyAccess(ctx context.Context, surveyID int) (survey *models.Survey, isUserAdmin bool, err error) {
 	userID, roles, err := getUserAndRolesFromContext(ctx)
 	if err != nil {
-		log.Printf("[SVC_AUTH_ERROR] authorizeSurveyAccess: Error getting user/roles from context for surveyID %d: %v", surveyID, err)
 		return nil, false, fmt.Errorf("authorization context error: %w", err)
 	}
-	log.Printf("[SVC_AUTH_DEBUG] authorizeSurveyAccess: For surveyID %d - Context UserID: %d, Roles: %v", surveyID, userID, roles)
 
 	isUserAdmin = containsString(roles, "admin")
-	log.Printf("[SVC_AUTH_DEBUG] authorizeSurveyAccess: For surveyID %d - Is context user admin? %t", surveyID, isUserAdmin)
 
 	survey, err = s.repo.GetSurvey(ctx, surveyID)
 	if err != nil {
-		log.Printf("[SVC_ERROR] authorizeSurveyAccess: GetSurvey failed for surveyID %d: %v", surveyID, err)
 		return nil, isUserAdmin, ErrNotFound
 	}
 	if survey == nil {
-		log.Printf("[SVC_WARN] authorizeSurveyAccess: Survey ID %d not found by repo.GetSurvey, but no error returned from repo.", surveyID)
 		return nil, isUserAdmin, ErrNotFound
 	}
-	log.Printf("[SVC_AUTH_DEBUG] authorizeSurveyAccess: For surveyID %d - Fetched survey.CreatorID: %d", surveyID, survey.CreatorID)
 
 	if isUserAdmin {
-		log.Printf("[SVC_AUTH_INFO] authorizeSurveyAccess: Access GRANTED for surveyID %d (User is ADMIN)", surveyID)
 		return survey, true, nil // Admin has access
 	}
 
 	if survey.CreatorID == userID {
-		log.Printf("[SVC_AUTH_INFO] authorizeSurveyAccess: Access GRANTED for surveyID %d (User is OWNER - survey.CreatorID %d == context.userID %d)", surveyID, survey.CreatorID, userID)
 		return survey, false, nil // Owner has access
 	}
 
-	log.Printf("[SVC_AUTH_INFO] authorizeSurveyAccess: Access DENIED for surveyID %d (User is NOT ADMIN and NOT OWNER - survey.CreatorID %d != context.userID %d)", surveyID, survey.CreatorID, userID)
 	return nil, false, ErrForbidden // Neither admin nor owner
 }
 
@@ -150,55 +140,31 @@ func (s *SurveyService) CreateSurvey(ctx context.Context, survey *models.Survey,
 	}
 	survey.CreatorID = userID // Set CreatorID from context
 
-	log.Printf("[SVC_DEBUG] CreateSurvey CALLED for Survey Title: %s by UserID: %d", survey.Title, survey.CreatorID)
-	log.Printf("[SVC_DEBUG] SurveyData: %+v", survey)
-	log.Printf("[SVC_DEBUG] RequestedQuestions for new survey: %+v", requestedQuestions)
-
 	tx, err := s.repo.BeginTx(ctx)
 	if err != nil {
-		log.Printf("[SVC_ERROR] CreateSurvey: Failed to begin transaction: %v", err)
 		return 0, fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	log.Printf("[SVC_DEBUG] CreateSurvey: Transaction BEGAN")
 
 	var surveyID int // Declare surveyID here to be accessible in defer
 	defer func() {
 		if p := recover(); p != nil {
-			log.Printf("[SVC_PANIC] CreateSurvey: Recovered panic. Rolling back. Panic: %v", p)
 			_ = tx.Rollback(ctx)
 			panic(p)
 		} else if err != nil {
-			log.Printf("[SVC_ERROR] CreateSurvey: Error occurred. Rolling back. Error: %v", err)
-			rbErr := tx.Rollback(ctx)
-			if rbErr != nil {
-				log.Printf("[SVC_ERROR] CreateSurvey: Transaction rollback FAILED: %v", rbErr)
-			} else {
-				log.Printf("[SVC_DEBUG] CreateSurvey: Transaction ROLLED BACK")
-			}
+			_ = tx.Rollback(ctx)
 		} else {
-			log.Printf("[SVC_DEBUG] CreateSurvey: Attempting to COMMIT transaction")
 			err = tx.Commit(ctx)
-			if err != nil {
-				log.Printf("[SVC_ERROR] CreateSurvey: Transaction commit FAILED: %v", err)
-			} else {
-				log.Printf("[SVC_DEBUG] CreateSurvey: Transaction COMMITTED")
-			}
 		}
 	}()
 
-	log.Printf("[SVC_DEBUG] CreateSurvey: Step 1: Creating survey entry for Title: %s, CreatorID: %d", survey.Title, survey.CreatorID)
 	surveyID, err = s.repo.CreateSurveyTx(ctx, tx, survey)
 	if err != nil {
-		log.Printf("[SVC_ERROR] CreateSurvey: Step 1 FAILED: CreateSurveyTx: %v", err)
 		return 0, fmt.Errorf("failed to create survey entry in transaction: %w", err)
 	}
 	survey.ID = surveyID
-	log.Printf("[SVC_DEBUG] CreateSurvey: Step 1 SUCCESS: Survey entry created with ID: %d", surveyID)
 
 	if len(requestedQuestions) > 0 {
-		log.Printf("[SVC_DEBUG] CreateSurvey: Step 2: Processing %d requested questions for new Survey ID: %d", len(requestedQuestions), surveyID)
 		for i, reqQuestion := range requestedQuestions {
-			log.Printf("[SVC_DEBUG] CreateSurvey: Processing requested question #%d: %+v", i+1, reqQuestion)
 			questionModel := &models.Question{
 				SurveyID: surveyID,
 				Text:     reqQuestion.Text,
@@ -207,43 +173,30 @@ func (s *SurveyService) CreateSurvey(ctx context.Context, survey *models.Survey,
 				OrderNum: i + 1,
 			}
 
-			log.Printf("[SVC_DEBUG] CreateSurvey: Creating NEW question in DB: %+v", questionModel)
 			newQuestionID, errCreate := s.repo.CreateQuestionTx(ctx, tx, questionModel)
 			if errCreate != nil {
-				log.Printf("[SVC_ERROR] CreateSurvey: CreateQuestionTx FAILED for new question: %v", errCreate)
 				err = fmt.Errorf("failed to create new question in transaction: %w", errCreate)
 				return 0, err
 			}
 			questionModel.ID = newQuestionID
-			log.Printf("[SVC_DEBUG] CreateSurvey: CreateQuestionTx SUCCESS. New Question ID: %d", newQuestionID)
 
 			if len(reqQuestion.Options) > 0 {
-				log.Printf("[SVC_DEBUG] CreateSurvey: %d options provided for New Question ID %d. Creating them.", len(reqQuestion.Options), newQuestionID)
 				for optIdx, optText := range reqQuestion.Options {
 					optionModel := &models.QuestionOption{
 						QuestionID: newQuestionID,
 						Text:       optText,
 						OrderNum:   optIdx + 1,
 					}
-					log.Printf("[SVC_DEBUG] CreateSurvey: Creating option #%d for New Question ID %d: %+v", optIdx+1, newQuestionID, optionModel)
 					_, errCreateOpt := s.repo.CreateQuestionOptionTx(ctx, tx, optionModel)
 					if errCreateOpt != nil {
-						log.Printf("[SVC_ERROR] CreateSurvey: CreateQuestionOptionTx FAILED for New Question ID %d, Option Text '%s': %v", newQuestionID, optText, errCreateOpt)
 						err = fmt.Errorf("failed to create option for new question ID %d: %w", newQuestionID, errCreateOpt)
 						return 0, err
 					}
-					log.Printf("[SVC_DEBUG] CreateSurvey: CreateQuestionOptionTx SUCCESS for option '%s', New Question ID %d", optText, newQuestionID)
 				}
-			} else {
-				log.Printf("[SVC_DEBUG] CreateSurvey: No options provided for New Question ID %d.", newQuestionID)
 			}
 		}
-		log.Printf("[SVC_DEBUG] CreateSurvey: Step 2 SUCCESS: All requested questions processed for new Survey ID: %d", surveyID)
-	} else {
-		log.Printf("[SVC_DEBUG] CreateSurvey: No questions provided in the request for new Survey ID: %d", surveyID)
 	}
 
-	log.Printf("[SVC_DEBUG] CreateSurvey function ENDING for new Survey ID: %d. Final 'err' before defer: %v", surveyID, err)
 	return surveyID, err
 }
 
@@ -305,56 +258,34 @@ func (s *SurveyService) UpdateSurvey(ctx context.Context, survey *models.Survey)
 
 // UpdateSurveyWithQuestions updates a survey and its questions/options
 func (s *SurveyService) UpdateSurveyWithQuestions(ctx context.Context, surveyToUpdate *models.Survey, requestedQuestions []models.QuestionUpdateRequest) error {
-	existingSurvey, isUserAdmin, err := s.authorizeSurveyAccess(ctx, surveyToUpdate.ID)
+	existingSurvey, _, err := s.authorizeSurveyAccess(ctx, surveyToUpdate.ID)
 	if err != nil {
 		return err // Handles ErrForbidden, ErrNotFound, or other errors
 	}
 	// User is authorized (owner or admin)
 	surveyToUpdate.CreatorID = existingSurvey.CreatorID // Ensure CreatorID is not changed from original
 
-	log.Printf("[SVC_DEBUG] UpdateSurveyWithQuestions CALLED for Survey ID: %d by UserID: %d (Admin: %t)", surveyToUpdate.ID, existingSurvey.CreatorID, isUserAdmin)
-	log.Printf("[SVC_DEBUG] SurveyToUpdate (basic fields): %+v", surveyToUpdate)
-	log.Printf("[SVC_DEBUG] RequestedQuestions for update: %+v", requestedQuestions)
-
 	tx, err := s.repo.BeginTx(ctx)
 	if err != nil {
-		log.Printf("[SVC_ERROR] Failed to begin transaction for Survey ID %d: %v", surveyToUpdate.ID, err)
 		return fmt.Errorf("failed to begin transaction: %w", err)
 	}
-	log.Printf("[SVC_DEBUG] Transaction BEGAN for Survey ID: %d", surveyToUpdate.ID)
 
 	defer func() {
 		if p := recover(); p != nil {
-			log.Printf("[SVC_PANIC] Recovered panic during UpdateSurveyWithQuestions for Survey ID %d. Rolling back. Panic: %v", surveyToUpdate.ID, p)
 			_ = tx.Rollback(ctx)
 			panic(p) // re-throw panic after Rollback
 		} else if err != nil {
-			log.Printf("[SVC_ERROR] Error occurred during UpdateSurveyWithQuestions for Survey ID %d. Rolling back. Error: %v", surveyToUpdate.ID, err)
-			rbErr := tx.Rollback(ctx)
-			if rbErr != nil {
-				log.Printf("[SVC_ERROR] Transaction rollback FAILED for Survey ID %d: %v", surveyToUpdate.ID, rbErr)
-			} else {
-				log.Printf("[SVC_DEBUG] Transaction ROLLED BACK for Survey ID: %d", surveyToUpdate.ID)
-			}
+			_ = tx.Rollback(ctx)
 		} else {
-			log.Printf("[SVC_DEBUG] Attempting to COMMIT transaction for Survey ID: %d", surveyToUpdate.ID)
 			err = tx.Commit(ctx)
-			if err != nil {
-				log.Printf("[SVC_ERROR] Transaction commit FAILED for Survey ID %d: %v", surveyToUpdate.ID, err)
-			} else {
-				log.Printf("[SVC_DEBUG] Transaction COMMITTED for Survey ID: %d", surveyToUpdate.ID)
-			}
 		}
 	}()
 
 	// 1. Update the basic survey entry (Title, Description, IsActive, Dates)
-	log.Printf("[SVC_DEBUG] UpdateSurveyWithQuestions: Step 1: Updating survey entry for ID: %d", surveyToUpdate.ID)
 	err = s.repo.UpdateSurveyTx(ctx, tx, surveyToUpdate) // Assuming UpdateSurveyTx exists
 	if err != nil {
-		log.Printf("[SVC_ERROR] UpdateSurveyWithQuestions: Step 1 FAILED: UpdateSurveyTx for ID %d: %v", surveyToUpdate.ID, err)
 		return fmt.Errorf("failed to update survey entry in transaction: %w", err)
 	}
-	log.Printf("[SVC_DEBUG] UpdateSurveyWithQuestions: Step 1 SUCCESS: Survey entry updated for ID: %d", surveyToUpdate.ID)
 
 	// 2. Process questions: diff between existing and requested to Add, Update, or Delete questions
 	// This logic is complex: fetch existing questions, compare with reqQuestions, then act.
@@ -363,16 +294,12 @@ func (s *SurveyService) UpdateSurveyWithQuestions(ctx context.Context, surveyToU
 	// Then s.repo.DeleteQuestionTx, s.repo.UpdateQuestionTx, s.repo.CreateQuestionTx.
 	// For now, let's assume a placeholder for this complex diff logic or a simpler approach:
 	// Example: Delete all existing questions and recreate from request (simplistic, but shows transaction use)
-	log.Printf("[SVC_DEBUG] UpdateSurveyWithQuestions: Step 2a: Deleting existing questions for Survey ID %d before re-adding (simplistic approach).", surveyToUpdate.ID)
 	err = s.repo.DeleteQuestionsBySurveyIDTx(ctx, tx, surveyToUpdate.ID)
 	if err != nil {
-		log.Printf("[SVC_ERROR] UpdateSurveyWithQuestions: Failed to delete existing questions for Survey ID %d: %v", surveyToUpdate.ID, err)
 		return fmt.Errorf("failed to delete existing questions: %w", err)
 	}
-	log.Printf("[SVC_DEBUG] UpdateSurveyWithQuestions: Step 2a SUCCESS: Existing questions deleted for Survey ID %d.", surveyToUpdate.ID)
 
 	if len(requestedQuestions) > 0 {
-		log.Printf("[SVC_DEBUG] UpdateSurveyWithQuestions: Step 2b: Processing %d requested questions for Survey ID: %d", len(requestedQuestions), surveyToUpdate.ID)
 		for i, reqQuestion := range requestedQuestions {
 			questionModel := &models.Question{
 				SurveyID: surveyToUpdate.ID,
@@ -383,35 +310,15 @@ func (s *SurveyService) UpdateSurveyWithQuestions(ctx context.Context, surveyToU
 			}
 			// If reqQuestion.ID is present and non-zero, it could imply an update to an existing question if not deleting all.
 			// In our simplistic delete-all approach, all are new.
-			log.Printf("[SVC_DEBUG] UpdateSurveyWithQuestions: Creating question in DB: %+v", questionModel)
 			newQuestionID, errCreate := s.repo.CreateQuestionTx(ctx, tx, questionModel)
 			if errCreate != nil {
-				log.Printf("[SVC_ERROR] UpdateSurveyWithQuestions: CreateQuestionTx FAILED: %v", errCreate)
 				err = fmt.Errorf("failed to create question in transaction: %w", errCreate)
 				return err
 			}
-			log.Printf("[SVC_DEBUG] UpdateSurveyWithQuestions: CreateQuestionTx SUCCESS. Question ID: %d", newQuestionID)
-
-			if len(reqQuestion.Options) > 0 {
-				for optIdx, optText := range reqQuestion.Options {
-					optionModel := &models.QuestionOption{
-						QuestionID: newQuestionID,
-						Text:       optText,
-						OrderNum:   optIdx + 1, // Or option.OrderNum
-					}
-					_, errCreateOpt := s.repo.CreateQuestionOptionTx(ctx, tx, optionModel)
-					if errCreateOpt != nil {
-						log.Printf("[SVC_ERROR] UpdateSurveyWithQuestions: CreateQuestionOptionTx FAILED: %v", errCreateOpt)
-						err = fmt.Errorf("failed to create option: %w", errCreateOpt)
-						return err
-					}
-				}
-			}
+			questionModel.ID = newQuestionID
 		}
-		log.Printf("[SVC_DEBUG] UpdateSurveyWithQuestions: Step 2b SUCCESS: Requested questions processed for Survey ID: %d", surveyToUpdate.ID)
 	}
 
-	log.Printf("[SVC_DEBUG] UpdateSurveyWithQuestions function ENDING for Survey ID: %d. Final 'err' before defer: %v", surveyToUpdate.ID, err)
 	return err // err will be handled by defer for commit/rollback
 }
 
@@ -576,10 +483,8 @@ func (s *SurveyService) ListUserSurveys(ctx context.Context, page, limit int) ([
 
 	offset := (page - 1) * limit
 
-	log.Printf("[SVC_DEBUG] ListUserSurveys: UserID: %d, Page: %d, Limit: %d, Offset: %d", userID, page, limit, offset)
 	surveys, total, err := s.repo.ListSurveysByCreatorID(ctx, userID, offset, limit)
 	if err != nil {
-		log.Printf("[SVC_ERROR] ListUserSurveys: Error from repository: %v", err)
 		return nil, 0, fmt.Errorf("failed to list user surveys: %w", err)
 	}
 	return surveys, total, nil
@@ -605,11 +510,8 @@ func (s *SurveyService) ListAllPublicSurveys(ctx context.Context, page, limit in
 
 	isUserAdmin := containsString(roles, "admin")
 
-	log.Printf("[SVC_DEBUG] ListAllPublicSurveys: UserID: %d, IsAdmin: %t, Page: %d, Limit: %d, Offset: %d", userID, isUserAdmin, page, limit, offset)
-	// The repository method will handle filtering by is_active for non-admins if that's the desired logic.
 	surveys, total, err := s.repo.ListAllSurveys(ctx, isUserAdmin, offset, limit)
 	if err != nil {
-		log.Printf("[SVC_ERROR] ListAllPublicSurveys: Error from repository: %v", err)
 		return nil, 0, fmt.Errorf("failed to list all surveys: %w", err)
 	}
 	return surveys, total, nil

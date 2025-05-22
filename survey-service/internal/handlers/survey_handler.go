@@ -8,9 +8,9 @@ import (
 	"strconv"
 	"strings"
 
+	"github.com/VitaliySynytskyi/survey-platform/survey-service/internal/models"
+	"github.com/VitaliySynytskyi/survey-platform/survey-service/internal/service"
 	"github.com/gin-gonic/gin"
-	"github.com/survey-app/survey-service/internal/models"
-	"github.com/survey-app/survey-service/internal/service"
 )
 
 // SurveyHandler handles HTTP requests related to surveys

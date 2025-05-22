@@ -4,8 +4,8 @@ import (
 	"net/http"
 
 	"github.com/gin-gonic/gin"
-	"github.com/survey-app/auth-service/internal/models"
-	"github.com/survey-app/auth-service/internal/service"
+	"github.com/VitaliySynytskyi/survey-platform/auth-service/internal/models"
+	"github.com/VitaliySynytskyi/survey-platform/auth-service/internal/service"
 )
 
 // AuthHandler handles authentication endpoints
