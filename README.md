@@ -79,8 +79,8 @@ The frontend is built with Vue.js and follows the component-based architecture
 1. **Clone the repository**
 
 ```bash
-git clone https://github.com/yourusername/survey-app.git
-cd survey-app
+git clone https://github.com/VitaliySynytskyi/survey-platform.git
+cd survey-platform
 ```
 
 2. **Start the application**
