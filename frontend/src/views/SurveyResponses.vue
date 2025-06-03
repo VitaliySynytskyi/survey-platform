@@ -107,10 +107,10 @@
                         <v-card class="pa-4" variant="outlined">
                           <div v-for="(option, optIndex) in question.options" :key="optIndex" class="mb-2">
                             <div class="d-flex align-center mb-1">
-                              <div class="text-body-1 mr-2" style="width: 200px;">{{ option.text }}</div>
+                              <div class="text-body-1 mr-2" style="width: 200px;">{{ typeof option === 'string' ? option : option.text }}</div>
                               <div class="mr-2" style="flex: 1;">
                                 <v-progress-linear
-                                  :model-value="getOptionPercentage(question.id, option.text, question.type)"
+                                  :model-value="getOptionPercentage(question.id, typeof option === 'string' ? option : option.text, question.type)"
                                   height="20"
                                   color="primary"
                                   rounded
@@ -121,7 +121,7 @@
                                 </v-progress-linear>
                               </div>
                               <div class="text-body-2" style="width: 50px;">
-                                {{ getOptionCount(question.id, option.text, question.type) }}
+                                {{ getOptionCount(question.id, typeof option === 'string' ? option : option.text, question.type) }}
                               </div>
                             </div>
                           </div>
@@ -437,10 +437,12 @@ const getOptionCount = (questionId, optionText, questionType) => {
     const answer = response.answers.find(a => a.questionId === questionId);
     if (answer) {
       if (questionType === 'checkbox' && Array.isArray(answer.value)) {
+        // For checkboxes, check if this specific option is selected
         if (answer.value.includes(optionText)) {
           count++;
         }
-      } else if (answer.value === optionText) {
+      } else if (questionType !== 'checkbox' && answer.value === optionText) {
+        // For non-checkbox questions (multiple_choice, dropdown)
         count++;
       }
     }
@@ -452,12 +454,15 @@ const getOptionPercentage = (questionId, optionText, questionType) => {
   const count = getOptionCount(questionId, optionText, questionType);
   
   if (questionType === 'checkbox') {
-    // For checkboxes, percentage is out of total responses, as one response can have multiple checks.
-    return responses.value.length > 0 ? (count / responses.value.length) * 100 : 0;
+    // For checkboxes, percentage is out of total responses who answered this question
+    const totalResponsesForQuestion = responses.value.filter(r => 
+      r.answers.some(a => a.questionId === questionId && Array.isArray(a.value) && a.value.length > 0)
+    ).length;
+    return totalResponsesForQuestion > 0 ? (count / totalResponsesForQuestion) * 100 : 0;
   } else {
     // For single-select (multiple_choice, dropdown), percentage is out of those who answered THIS question.
     const totalResponsesForQuestion = responses.value.filter(r => 
-      r.answers.some(a => a.questionId === questionId && a.value !== null && a.value !== undefined && (Array.isArray(a.value) ? a.value.length > 0 : a.value !== ''))
+      r.answers.some(a => a.questionId === questionId && a.value !== null && a.value !== undefined && a.value !== '')
     ).length;
     return totalResponsesForQuestion > 0 ? (count / totalResponsesForQuestion) * 100 : 0;
   }

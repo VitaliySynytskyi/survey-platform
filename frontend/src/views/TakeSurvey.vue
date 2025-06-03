@@ -71,8 +71,8 @@
                 <v-radio
                   v-for="(option, optIndex) in question.options"
                   :key="optIndex"
-                  :label="option.text"
-                  :value="option.text"
+                  :label="typeof option === 'string' ? option : option.text"
+                  :value="typeof option === 'string' ? option : option.text"
                 ></v-radio>
               </v-radio-group>
 
@@ -81,9 +81,9 @@
                 <v-checkbox
                   v-for="(option, optIndex) in question.options"
                   :key="optIndex"
-                  :model-value="isOptionSelected(question.id, option.text)"
-                  @update:model-value="updateCheckboxValue(question.id, option.text, $event)"
-                  :label="option.text"
+                  :model-value="isOptionSelected(question.id, typeof option === 'string' ? option : option.text)"
+                  @update:model-value="updateCheckboxValue(question.id, typeof option === 'string' ? option : option.text, $event)"
+                  :label="typeof option === 'string' ? option : option.text"
                   density="comfortable"
                   hide-details
                   class="mb-1"
@@ -100,9 +100,9 @@
               <v-select
                 v-else-if="question.type === 'dropdown'"
                 v-model="responses[question.id]"
-                :items="question.options"
+                :items="normalizedOptions(question.options)"
                 item-title="text"
-                item-value="text"
+                item-value="value"
                 label="Select an option"
                 variant="outlined"
                 density="comfortable"
@@ -231,14 +231,26 @@ export default {
           text: 'What features do you like most?',
           type: 'checkbox',
           required: true,
-          options: ['User Interface', 'Performance', 'Reliability', 'Customer Support', 'Price']
+          options: [
+            { text: 'User Interface' },
+            { text: 'Performance' },
+            { text: 'Reliability' },
+            { text: 'Customer Support' },
+            { text: 'Price' }
+          ]
         },
         {
           id: 'q3',
           text: 'How did you hear about us?',
           type: 'multiple_choice',
           required: true,
-          options: ['Search Engine', 'Social Media', 'Friend/Colleague', 'Advertisement', 'Other']
+          options: [
+            { text: 'Search Engine' },
+            { text: 'Social Media' },
+            { text: 'Friend/Colleague' },
+            { text: 'Advertisement' },
+            { text: 'Other' }
+          ]
         },
         {
           id: 'q4',
@@ -330,6 +342,11 @@ export default {
         const { valid: formIsValid } = await form.value.validate(); // Renamed to avoid conflict with component's 'valid' ref
         if (!formIsValid) {
           error.value = 'Please correct the errors in the form.';
+          // Scroll to first error
+          const firstError = document.querySelector('.v-messages--error');
+          if (firstError) {
+            firstError.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
           return;
         }
       }
@@ -337,6 +354,17 @@ export default {
       if (survey.value.is_active === false) {
         error.value = 'This survey is inactive and cannot accept new responses.';
         return;
+      }
+
+      // Additional validation for required checkbox questions
+      for (const question of survey.value.questions) {
+        if (question.required && question.type === 'checkbox') {
+          const checkboxArray = getCheckboxArray(question.id);
+          if (!checkboxArray || checkboxArray.length === 0) {
+            error.value = `Please answer the required question: "${question.text}"`;
+            return;
+          }
+        }
       }
 
       submitting.value = true;
@@ -406,10 +434,36 @@ export default {
         router.push({ name: 'SurveySuccess', params: { id: survey.value.id } }); 
       } catch (err) {
         console.error('Error submitting survey:', err);
-        error.value = err.response?.data?.error || err.response?.data?.message || err.message || 'Failed to submit response. Please try again.';
+        let errorMessage = 'Failed to submit response. Please try again.';
+        if (err.response?.data?.error) {
+          errorMessage = err.response.data.error;
+        } else if (err.response?.data?.message) {
+          errorMessage = err.response.data.message;
+        } else if (err.message) {
+          errorMessage = err.message;
+        }
+        error.value = errorMessage;
+        
+        // Scroll to error message
+        setTimeout(() => {
+          const errorAlert = document.querySelector('.v-alert--type-error');
+          if (errorAlert) {
+            errorAlert.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          }
+        }, 100);
       } finally {
         submitting.value = false;
       }
+    };
+    
+    const normalizedOptions = (options) => {
+      if (!options) return [];
+      return options.map(option => {
+        if (typeof option === 'string') {
+          return { text: option, value: option };
+        }
+        return { text: option.text || '', value: option.text || '' };
+      });
     };
     
     onMounted(() => {
@@ -428,7 +482,8 @@ export default {
       getCheckboxArray,
       isOptionSelected,
       updateCheckboxValue,
-      submitSurvey
+      submitSurvey,
+      normalizedOptions
     };
   }
 };

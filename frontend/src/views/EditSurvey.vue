@@ -125,6 +125,7 @@
                   variant="outlined"
                   density="comfortable"
                   class="mb-2"
+                  @update:model-value="onQuestionTypeChange(question)"
                 ></v-select>
                 <v-switch
                   v-model="question.required"
@@ -182,7 +183,7 @@
 </template>
 
 <script>
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, onMounted, nextTick } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { useAuthStore } from '../store/auth';
 import axios from '../utils/axiosConfig';
@@ -313,6 +314,14 @@ export default {
     const addOption = (question) => {
       if (!question.options) question.options = [];
       question.options.push({ text: '' });
+      
+      // Auto-focus on the new option input after Vue updates the DOM
+      nextTick(() => {
+        const inputs = document.querySelectorAll(`[data-question-id="${question.id || 'new'}"] input[placeholder*="Option"]`);
+        if (inputs.length > 0) {
+          inputs[inputs.length - 1].focus();
+        }
+      });
     };
 
     const removeOption = (question, index) => {
@@ -327,8 +336,22 @@ export default {
       if (!formIsValid || survey.questions.length === 0) {
         if (survey.questions.length === 0) {
           showSnackbar('Survey must have at least one question.', 'error');
+        } else {
+          showSnackbar('Please fix all validation errors before saving.', 'error');
         }
         return;
+      }
+      
+      // Additional validation for questions with options
+      for (let i = 0; i < survey.questions.length; i++) {
+        const question = survey.questions[i];
+        if (['multiple_choice', 'checkbox', 'dropdown'].includes(question.type)) {
+          const validOptions = question.options ? question.options.filter(opt => opt.text && opt.text.trim() !== '') : [];
+          if (validOptions.length < 2) {
+            showSnackbar(`Question ${i + 1} must have at least 2 options.`, 'error');
+            return;
+          }
+        }
       }
       
       saving.value = true;
@@ -356,11 +379,15 @@ export default {
           headers: { Authorization: `Bearer ${authStore.token}` }
         });
         showSnackbar('Survey updated successfully!', 'success');
-        await fetchSurveyDetails(); // Re-fetch data after successful save
-        router.push('/dashboard');
+        // Small delay to show success message before redirect
+        setTimeout(() => {
+          router.push('/dashboard');
+        }, 1000);
       } catch (err) {
         console.error('Error updating survey:', err);
-        error.value = err.response?.data?.error || 'Failed to update survey. Please try again.';
+        const errorMsg = err.response?.data?.error || 'Failed to update survey. Please try again.';
+        error.value = errorMsg;
+        showSnackbar(errorMsg, 'error');
       } finally {
         saving.value = false;
       }
@@ -370,6 +397,18 @@ export default {
       snackbar.value.text = text;
       snackbar.value.color = color;
       snackbar.value.show = true;
+    };
+
+    const onQuestionTypeChange = (question) => {
+      // Initialize options for question types that need them
+      if (['multiple_choice', 'checkbox', 'dropdown'].includes(question.type)) {
+        if (!question.options || question.options.length === 0) {
+          question.options = [{ text: '' }, { text: '' }];
+        }
+      } else {
+        // Clear options for question types that don't need them
+        question.options = [];
+      }
     };
 
     onMounted(() => {
@@ -394,7 +433,8 @@ export default {
       removeOption,
       updateSurveyHandler,
       snackbar,
-      showSnackbar
+      showSnackbar,
+      onQuestionTypeChange
     };
   }
 };

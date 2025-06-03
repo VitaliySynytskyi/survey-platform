@@ -266,9 +266,11 @@ func (s *ResponseService) GetSurveyAnalytics(ctx context.Context, surveyID int) 
 			}
 
 		case "checkbox":
-			optionCounts := make(map[int]int)
+			optionCounts := make(map[string]int)
+			optionTextToIDMap := make(map[string]int)
 			for _, opt := range q.Options {
-				optionCounts[opt.ID] = 0
+				optionCounts[opt.Text] = 0
+				optionTextToIDMap[opt.Text] = opt.ID
 			}
 			for _, resp := range responses {
 				foundAnswerToThisQuestionInResp := false
@@ -281,11 +283,8 @@ func (s *ResponseService) GetSurveyAnalytics(ctx context.Context, surveyID int) 
 							}
 							for _, valInterface := range selectedOptionValues {
 								if optionValueStr, isString := valInterface.(string); isString {
-									selectedOptionID, errAtoi := strconv.Atoi(optionValueStr)
-									if errAtoi == nil {
-										if _, knownOption := optionCounts[selectedOptionID]; knownOption {
-											optionCounts[selectedOptionID]++
-										}
+									if _, knownOption := optionCounts[optionValueStr]; knownOption {
+										optionCounts[optionValueStr]++
 									}
 								}
 							}
@@ -296,7 +295,7 @@ func (s *ResponseService) GetSurveyAnalytics(ctx context.Context, surveyID int) 
 			}
 			qa.OptionsSummary = make([]models.OptionSummary, 0, len(q.Options))
 			for _, opt := range q.Options {
-				count := optionCounts[opt.ID]
+				count := optionCounts[opt.Text]
 				percentage := 0.0
 				if actualRespondersToThisQuestion > 0 {
 					percentage = (float64(count) / float64(actualRespondersToThisQuestion)) * 100

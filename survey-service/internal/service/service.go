@@ -316,6 +316,22 @@ func (s *SurveyService) UpdateSurveyWithQuestions(ctx context.Context, surveyToU
 				return err
 			}
 			questionModel.ID = newQuestionID
+
+			// Create options for the question if any are provided
+			if len(reqQuestion.Options) > 0 {
+				for optIdx, optText := range reqQuestion.Options {
+					optionModel := &models.QuestionOption{
+						QuestionID: newQuestionID,
+						Text:       optText,
+						OrderNum:   optIdx + 1,
+					}
+					_, errCreateOpt := s.repo.CreateQuestionOptionTx(ctx, tx, optionModel)
+					if errCreateOpt != nil {
+						err = fmt.Errorf("failed to create option for question ID %d: %w", newQuestionID, errCreateOpt)
+						return err
+					}
+				}
+			}
 		}
 	}
 

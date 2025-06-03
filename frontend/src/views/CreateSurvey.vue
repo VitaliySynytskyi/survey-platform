@@ -138,6 +138,7 @@
                   variant="outlined"
                   density="comfortable"
                   class="mb-2"
+                  @update:model-value="onQuestionTypeChange(question)"
                 ></v-select>
 
                 <v-switch
@@ -235,7 +236,7 @@
 </template>
 
 <script>
-import { ref, reactive } from 'vue';
+import { ref, reactive, nextTick } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuthStore } from '../store/auth';
 import axios from '../utils/axiosConfig';
@@ -296,7 +297,7 @@ export default {
         text: '',
         type: 'short_answer',
         required: false,
-        options: ['']
+        options: []
       });
     };
     
@@ -305,35 +306,96 @@ export default {
     };
     
     const addOption = (question) => {
+      if (!question.options) question.options = [];
       question.options.push('');
+      
+      // Auto-focus on the new option input after Vue updates the DOM
+      nextTick(() => {
+        const questionIndex = survey.questions.indexOf(question);
+        const optionInputs = document.querySelectorAll(`.question-card:nth-child(${questionIndex + 1}) input[label*="Option"]`);
+        if (optionInputs.length > 0) {
+          optionInputs[optionInputs.length - 1].focus();
+        }
+      });
     };
     
     const removeOption = (question, index) => {
-      if (question.options.length > 1) {
+      if (question.options && question.options.length > 1) {
         question.options.splice(index, 1);
       }
     };
     
+    const onQuestionTypeChange = (question) => {
+      // Initialize options for question types that need them
+      if (['multiple_choice', 'checkbox', 'dropdown'].includes(question.type)) {
+        if (!question.options || question.options.length === 0) {
+          question.options = ['', ''];
+        }
+      } else {
+        // Clear options for question types that don't need them
+        question.options = [];
+      }
+    };
+    
     const saveSurvey = async () => {
-      if (!valid.value || survey.questions.length === 0) return;
+      if (!valid.value || survey.questions.length === 0) {
+        if (survey.questions.length === 0) {
+          showSnackbar('Survey must have at least one question.', 'error');
+        } else {
+          showSnackbar('Please fix all validation errors before saving.', 'error');
+        }
+        return;
+      }
+      
+      // Additional validation for questions with options
+      for (let i = 0; i < survey.questions.length; i++) {
+        const question = survey.questions[i];
+        if (['multiple_choice', 'checkbox', 'dropdown'].includes(question.type)) {
+          const validOptions = question.options.filter(opt => opt && opt.trim() !== '');
+          if (validOptions.length < 2) {
+            showSnackbar(`Question ${i + 1} must have at least 2 options.`, 'error');
+            return;
+          }
+        }
+      }
       
       loading.value = true;
       error.value = '';
       
       try {
-        // In production, uncomment this
-        const response = await axios.post('/api/v1/surveys', survey, {
+        // Process questions to format options correctly for backend
+        const processedSurvey = {
+          ...survey,
+          questions: survey.questions.map((question, index) => {
+            let processedOptions = [];
+            if (['multiple_choice', 'checkbox', 'dropdown'].includes(question.type)) {
+              // Convert array of strings to array of non-empty strings
+              processedOptions = question.options.filter(opt => opt && opt.trim() !== '');
+            }
+            return {
+              text: question.text,
+              type: question.type,
+              required: question.required,
+              order_num: index + 1,
+              options: processedOptions
+            };
+          })
+        };
+        
+        const response = await axios.post('/api/v1/surveys', processedSurvey, {
           headers: { Authorization: `Bearer ${authStore.token}` }
         });
         
-        // For development, simulate a successful response - REMOVE THIS
-        // setTimeout(() => {
         showSnackbar('Survey created successfully!', 'success');
-        router.push('/dashboard');
-        // }, 1000);
+        // Small delay to show success message before redirect
+        setTimeout(() => {
+          router.push('/dashboard');
+        }, 1000);
       } catch (err) {
         console.error('Error creating survey:', err);
-        error.value = err.response?.data?.error || 'Failed to create survey. Please try again.';
+        const errorMsg = err.response?.data?.error || 'Failed to create survey. Please try again.';
+        error.value = errorMsg;
+        showSnackbar(errorMsg, 'error');
       } finally {
         loading.value = false;
       }
@@ -362,6 +424,7 @@ export default {
       removeQuestion,
       addOption,
       removeOption,
+      onQuestionTypeChange,
       saveSurvey
     };
   }
